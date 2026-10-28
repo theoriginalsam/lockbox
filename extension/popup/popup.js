@@ -201,6 +201,20 @@ function viewMain() {
     if (matching.length) wrap.append(h("div", { class: "list" }, matching.map(itemRow)));
   }
 
+  const jobRow = h("div", { class: "row", style: "margin-bottom:10px" });
+  if (host) {
+    const fillApp = h("button", { class: "btn primary", title: "⌘/Ctrl+Shift+Y" }, "Fill application");
+    fillApp.addEventListener("click", busy(fillApp, async () => {
+      const r = await send("fillApplication");
+      if (r?.error) throw new Error(r.error);
+      if (!r) throw new Error("No form found on this page (reload the page if Lockbox was just installed)");
+      window.close();
+    }));
+    jobRow.append(fillApp);
+  }
+  jobRow.append(h("button", { class: "btn", onclick: () => chrome.tabs.create({ url: chrome.runtime.getURL("profile/profile.html") }) }, "Work profile"));
+  wrap.append(jobRow);
+
   const search = h("input", { type: "text", placeholder: "Search vault", value: ui.query, oninput: (e) => {
     ui.query = e.target.value;
     drawList();
@@ -323,9 +337,38 @@ function viewSettings() {
     await boot();
   }));
 
+  const quick = ui.items.filter((i) => i.type === "quick");
+  const quickList = h("div", { class: "list" }, quick.map((q) => {
+    const del = h("button", { class: "btn sm danger" }, "Remove");
+    del.addEventListener("click", busy(del, async () => { await send("remove", { id: q.id }); await boot(viewSettings); }));
+    return h("div", { class: "item", style: "cursor:default" }, h("div", { class: "avatar" }, "★"),
+      h("div", { class: "meta" }, h("b", {}, q.name), h("small", {}, "••••••••••")), h("div", { class: "acts" }, del));
+  }));
+  const qName = h("input", { type: "text", placeholder: `Label, e.g. "Usual password ${quick.length + 1}"` });
+  const qPw = passwordInput({ placeholder: "The password" });
+  const qAdd = h("button", { class: "btn sm primary" }, "Add quick password");
+  qAdd.addEventListener("click", busy(qAdd, async () => {
+    if (!qPw.input.value) throw new Error("Enter the password");
+    await send("save", { item: { type: "quick", name: qName.value || `Usual password ${quick.length + 1}`, password: qPw.input.value } });
+    toast("Quick password saved");
+    await boot(viewSettings);
+  }));
+
+  const inline = h("input", { type: "checkbox", style: "width:auto" });
+  inline.checked = s.inlineHelper !== false;
+  inline.addEventListener("change", async () => {
+    await send("settings", { patch: { inlineHelper: inline.checked } });
+    toast(inline.checked ? "In-page helper on" : "In-page helper off");
+  });
+
   return h("div", {},
     h("button", { class: "back", onclick: () => boot() }, "← Back"),
     h("h1", {}, "Settings"),
+    h("h2", {}, "Quick passwords"),
+    h("p", { class: "hint" }, "Passwords you reuse. On a site with no saved login, tap the password field to try them; after you sign in, Lockbox offers to save the login."),
+    quickList, field("Label", qName), field("Password", qPw.wrap), qAdd,
+    h("h2", {}, "In-page helper"),
+    h("label", { class: "row", style: "gap:8px;cursor:pointer" }, inline, h("span", {}, "Show the Lockbox badge and menu when I tap form fields")),
     h("h2", {}, "Auto-lock"), h("div", { class: "row" }, h("span", {}, "Lock after (minutes)"), minutes, saveLock),
     h("h2", {}, "Sync"), syncBox,
     h("h2", {}, "Backup"), h("p", { class: "hint" }, "The backup file is encrypted; you need your master password to use it."),

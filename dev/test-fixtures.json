@@ -15,5 +15,59 @@
     "country": "Nepal"
   },
   "enrollToken": "dev-enroll-f172bf551d670f6a3d3d497a",
-  "api": "http://localhost:3100/api/lockbox"
+  "api": "http://localhost:3100/api/lockbox",
+  "jobProfile": {
+    "contact": {
+      "name": "Test Q Candidate",
+      "email": "candidate@example.test",
+      "phone": "555-0199",
+      "location": "Austin, TX",
+      "linkedin": "https://linkedin.com/in/test-candidate",
+      "github": "https://github.com/test-candidate",
+      "website": ""
+    },
+    "headline": "ML Engineer",
+    "summary": "Fake summary for testing.",
+    "experience": [
+      {
+        "company": "Fake Corp",
+        "title": "ML Engineer",
+        "location": "Remote",
+        "start": "2022-01",
+        "end": "",
+        "bullets": [
+          {
+            "text": "Built a fake thing"
+          }
+        ]
+      }
+    ],
+    "education": [
+      {
+        "school": "Example State University",
+        "degree": "M.S.",
+        "field": "Computer Science",
+        "start": "2019",
+        "end": "2021"
+      }
+    ],
+    "skills": [
+      "Python",
+      "SQL"
+    ],
+    "answers": {
+      "work_authorization": "Yes",
+      "needs_sponsorship": "No",
+      "salary_expectation": "Open to discussion",
+      "eeo": "decline",
+      "custom": {
+        "why do you want": "Fake answer about the mission, for testing."
+      }
+    }
+  },
+  "quickPasswords": [
+    "fake-quick-ONE-111",
+    "fake-quick-TWO-222"
+  ],
+  "resumeB64": "JVBERi0xLjQKJSBmYWtlIHJlc3VtZSBmb3IgdGVzdGluZwolJUVPRgo="
 }

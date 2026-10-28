@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Fake shop · Sign in</title>
+  <style>
+    body { font: 14px system-ui; margin: 40px; } form { max-width: 320px; }
+    label { display: block; margin: 10px 0 4px; font-weight: 600; } input { width: 100%; padding: 8px; }
+  </style>
+</head>
+<body>
+  <h1 id="title">Sign in</h1>
+  <form id="login" action="login.html?signedin=1" method="get">
+    <label for="u">Email</label><input id="u" name="email" type="email" autocomplete="username">
+    <label for="p">Password</label><input id="p" name="pw" type="password" autocomplete="current-password">
+    <button id="go" type="submit">Sign in</button>
+  </form>
+  <script>if (location.search.includes("signedin")) document.getElementById("title").textContent = "Welcome back!";</script>
+  <script src="../dev/site-loader.js"></script>
+  <script src="../extension/src/content.js"></script>
+</body>
+</html>

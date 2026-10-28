@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Lockbox · Work profile (dev)</title>
+  <link rel="stylesheet" href="../extension/profile/profile.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap top-inner">
+      <div class="brand"><span class="logo" aria-hidden="true"></span>Lockbox <span class="muted">· Work profile</span></div>
+      <div class="actions"><span id="save-state" class="muted"></span><button class="btn primary" id="save">Save profile</button></div>
+    </div>
+  </header>
+  <main class="wrap" id="main"></main>
+  <script src="chrome-mock.js"></script>
+  <script type="module">
+    // Dev only: a fresh in-memory vault seeded with the fake profile, then the real editor.
+    await import("../extension/src/background.js");
+    const fx = await (await fetch("test-fixtures.json")).json();
+    const send = (type, p = {}) => chrome.runtime.sendMessage({ type, ...p });
+    await send("create", { password: fx.masterPassword });
+    await send("jobProfileSave", { profile: fx.jobProfile });
+    await send("resumeUpload", { name: "Test_Resume.pdf", mime: "application/pdf", b64: fx.resumeB64 });
+    await import("../extension/profile/profile.js");
+  </script>
+</body>
+</html>

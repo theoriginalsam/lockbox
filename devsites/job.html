@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Apply · Senior ML Engineer · ExampleCo (fake Greenhouse-style form)</title>
+  <style>
+    body { font: 14px system-ui; margin: 0; background: #fafafa; color: #222; }
+    .wrap { max-width: 560px; margin: 0 auto; padding: 24px; }
+    .field { margin-bottom: 14px; } label { display: block; font-weight: 600; margin-bottom: 4px; }
+    input[type=text], input[type=email], input[type=tel], input[type=url], select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font: inherit; }
+    .question { font-weight: 600; margin-bottom: 4px; } .opts label { display: inline; font-weight: 400; margin-right: 14px; }
+    h1 { font-size: 20px; } h2 { font-size: 15px; margin: 22px 0 10px; border-top: 1px solid #ddd; padding-top: 16px; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Senior ML Engineer · ExampleCo</h1>
+  <form id="application_form" onsubmit="event.preventDefault(); alert('submitted')">
+    <div class="field"><label for="first_name">First Name *</label><input type="text" id="first_name" name="job_application[first_name]" required></div>
+    <div class="field"><label for="last_name">Last Name *</label><input type="text" id="last_name" name="job_application[last_name]" required></div>
+    <div class="field"><label for="email">Email *</label><input type="email" id="email" name="job_application[email]" required></div>
+    <div class="field"><label for="phone">Phone</label><input type="tel" id="phone" name="job_application[phone]"></div>
+    <div class="field"><label for="resume">Resume/CV *</label><input type="file" id="resume" name="job_application[resume]" required></div>
+    <div class="field"><label for="location">Location (City) *</label><input type="text" id="location" name="job_application[location]" required></div>
+    <div class="field"><label for="linkedin">LinkedIn Profile</label><input type="url" id="linkedin" name="question_linkedin"></div>
+    <div class="field"><label for="website">Website</label><input type="url" id="website" name="question_website"></div>
+
+    <h2>Education</h2>
+    <div class="field"><label for="school">School</label><input type="text" id="school" name="education_school"></div>
+    <div class="field"><label for="degree">Degree</label>
+      <select id="degree" name="education_degree"><option value="">Select...</option><option>Bachelor's Degree</option><option>M.S.</option><option>PhD</option></select></div>
+    <div class="field"><label for="discipline">Discipline</label><input type="text" id="discipline" name="education_discipline"></div>
+
+    <h2>Questions</h2>
+    <div class="field"><label for="auth">Are you legally authorized to work in the United States? *</label>
+      <select id="auth" name="q_auth" required><option value="">Select...</option><option>Yes</option><option>No</option></select></div>
+    <div class="field">
+      <div class="question">Will you now or in the future require visa sponsorship? *</div>
+      <div class="opts" role="radiogroup">
+        <label><input type="radio" name="q_sponsor" value="1"> Yes</label>
+        <label><input type="radio" name="q_sponsor" value="0"> No</label>
+      </div>
+    </div>
+    <div class="field"><label for="salary">What are your salary expectations?</label><input type="text" id="salary" name="q_salary"></div>
+    <div class="field"><label for="why">Why do you want to work at ExampleCo? *</label><textarea id="why" name="q_why" required></textarea></div>
+    <div class="field"><label for="ref">Referrer name (if referred)</label><input type="text" id="ref" name="q_referrer"></div>
+    <div class="field"><label for="color">What's your favourite colour? *</label><input type="text" id="color" name="q_color" required></div>
+
+    <h2>Voluntary Self-Identification</h2>
+    <div class="field"><label for="gender">Gender</label>
+      <select id="gender" name="eeo_gender"><option value="">Select...</option><option>Male</option><option>Female</option><option>Decline To Self Identify</option></select></div>
+
+    <button type="submit">Submit Application</button>
+  </form>
+</div>
+<script src="../dev/site-loader.js"></script>
+<script src="../extension/src/content.js"></script>
+</body>
+</html>

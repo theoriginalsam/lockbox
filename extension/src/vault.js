@@ -1,10 +1,14 @@
+import { normalizeProfile } from "./jobfields.js";
+
 // Vault data model: plain objects, so they can be encrypted, merged and synced as one blob.
 //
-// item = { id, type: "login" | "note" | "profile", name, updatedAt, deleted?,
+// item = { id, type: "login" | "note" | "profile" | "job" | "quick", name, updatedAt, deleted?,
 //          login:   url, username, password, notes
 //          note:    text
 //          profile: fields { givenName, familyName, email, phone, address1, address2, city,
-//                            state, postalCode, country, organization } }
+//                            state, postalCode, country, organization }
+//          job:     profile (work profile, Nightshift profile.yaml schema; see jobfields.js)
+//          quick:   password (a password you reuse, offered on password fields of new sites) }
 // Deletes are tombstones so a delete on one device survives syncing with another.
 
 export const PROFILE_FIELDS = [
@@ -55,7 +59,7 @@ export function mergeVaults(a, b) {
 
 function sanitize(item) {
   const type = item.type;
-  if (!["login", "note", "profile"].includes(type)) throw new Error(`Unknown item type: ${type}`);
+  if (!["login", "note", "profile", "job", "quick"].includes(type)) throw new Error(`Unknown item type: ${type}`);
   const base = { id: item.id, type, name: String(item.name || "").trim().slice(0, 200) };
   if (type === "login") {
     const url = normalizeUrl(item.url);
@@ -64,6 +68,11 @@ function sanitize(item) {
       notes: String(item.notes || "") };
   }
   if (type === "note") return { ...base, name: base.name || "Note", text: String(item.text || "") };
+  if (type === "job") return { ...base, name: base.name || "Work profile", profile: normalizeProfile(item.profile) };
+  if (type === "quick") {
+    if (!item.password) throw new Error("Quick password can't be empty");
+    return { ...base, name: base.name || "Quick password", password: String(item.password) };
+  }
   const fields = {};
   for (const f of PROFILE_FIELDS) fields[f] = String(item.fields?.[f] || "").trim();
   return { ...base, name: base.name || "Profile", fields };

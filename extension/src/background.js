@@ -7,15 +7,20 @@
 
 import { fillLoginInPage, fillProfileInPage, readLoginInPage } from "./autofill.js";
 import {
-  decryptJSON, deriveKeys, exportKey, importKey, newKdfParams, openVault, passwordStrength, sealVault,
+  decryptJSON, deriveKeys, encryptJSON, exportKey, importKey, newKdfParams, openVault, passwordStrength, sealVault,
 } from "./crypto.js";
+import { classify, emptyProfile, normalizeProfile, profileFacts, suggest } from "./jobfields.js";
 import * as sync from "./sync.js";
 import { deleteItem, emptyVault, liveItems, matchesSite, mergeVaults, upsertItem } from "./vault.js";
 
 const LOCAL_KEY = "lockbox";
 const SESSION_KEY = "lockboxSession";
+const FILES_KEY = "lockboxFiles";          // encrypted resume PDF (device-local, not synced yet)
+const PENDING_KEY = "lockboxPendingSave";  // session: logins waiting for a "save?" answer, per tab
 const DEFAULT_SETTINGS = {
   autoLockMinutes: 15,
+  inlineHelper: true,
+  neverSave: [],
   sync: { enabled: false, apiBase: sync.DEFAULT_API, version: 0, lastSyncAt: null, lastError: null },
 };
 
@@ -228,6 +233,8 @@ const handlers = {
     const ctx = await unlocked();
     const minutes = Number(patch.autoLockMinutes);
     if (Number.isFinite(minutes)) ctx.local.settings.autoLockMinutes = Math.min(240, Math.max(1, minutes));
+    if (typeof patch.inlineHelper === "boolean") ctx.local.settings.inlineHelper = patch.inlineHelper;
+    if (Array.isArray(patch.neverSave)) ctx.local.settings.neverSave = patch.neverSave.map(String);
     await saveLocal(ctx.local);
     return { settings: ctx.local.settings };
   },
@@ -257,6 +264,47 @@ const handlers = {
 
   syncNow,
 
+  // ---------------------------------------------------------------- work profile & quick passwords
+
+  async jobProfileGet() {
+    const { vault } = await unlocked();
+    const item = liveItems(vault).find((i) => i.type === "job");
+    const files = (await chrome.storage.local.get(FILES_KEY))[FILES_KEY] || {};
+    return { id: item?.id || null, profile: item?.profile || emptyProfile(),
+      resume: files.resume ? { name: files.resume.name, size: files.resume.size } : null };
+  },
+
+  async jobProfileSave({ profile }) {
+    const ctx = await unlocked();
+    const existing = liveItems(ctx.vault).find((i) => i.type === "job");
+    const { vault } = upsertItem(ctx.vault, { id: existing?.id, type: "job", name: "Work profile",
+      profile: normalizeProfile(profile) });
+    await persist(ctx, vault);
+    return { ok: true };
+  },
+
+  async resumeUpload({ name, mime, b64 }) {
+    const { key } = await unlocked();
+    if (mime !== "application/pdf" && !/\.(pdf|docx?)$/i.test(name)) throw new Error("Upload a PDF or Word file");
+    if (b64.length > 7_000_000) throw new Error("Resume must be under 5 MB");
+    const box = await encryptJSON({ name, type: mime || "application/pdf", b64 }, key);
+    await chrome.storage.local.set({ [FILES_KEY]: { resume: { name, size: Math.round(b64.length * 0.75), box } } });
+    return { ok: true };
+  },
+
+  async resumeRemove() {
+    await unlocked();
+    await chrome.storage.local.remove(FILES_KEY);
+    return { ok: true };
+  },
+
+  async fillApplication() {
+    await unlocked();
+    const tab = await activeTab();
+    if (!tab || !/^https?:/.test(tab.url || "")) throw new Error("Open the job application first");
+    return chrome.tabs.sendMessage(tab.id, { type: "lockbox:fillAll" });
+  },
+
   async exportBackup() {
     const { local } = await unlocked();
     return { filename: `lockbox-backup-${new Date().toISOString().slice(0, 10)}.json`, data: local.sealed };
@@ -278,15 +326,158 @@ function safeHost(url) {
   }
 }
 
+// ---------------------------------------------------------------- in-page helper (content script)
+//
+// The content script runs on every page, so this channel is deliberately narrow: it never lists
+// the vault, only returns logins whose saved site matches the *frame* asking, and job/profile
+// data only while unlocked. Quick passwords are released one at a time, on the user's tap.
+
+async function resumeFile(key) {
+  const files = (await chrome.storage.local.get(FILES_KEY))[FILES_KEY];
+  return files?.resume ? decryptJSON(files.resume.box, key) : null;
+}
+
+function jobProfileOf(vault) {
+  return liveItems(vault).find((i) => i.type === "job")?.profile || null;
+}
+
+async function getPending() {
+  return (await chrome.storage.session.get(PENDING_KEY))[PENDING_KEY] || {};
+}
+
+async function setPending(pending) {
+  await chrome.storage.session.set({ [PENDING_KEY]: pending });
+}
+
+const contentHandlers = {
+  async status(_msg, sender) {
+    const local = await loadLocal();
+    const session = await getSession();
+    if (!local) return { setup: false };
+    if (!session) return { setup: true, unlocked: false, inline: local.settings.inlineHelper };
+    const { vault } = await unlocked();
+    const items = liveItems(vault);
+    return {
+      setup: true, unlocked: true, inline: local.settings.inlineHelper,
+      hasProfile: items.some((i) => i.type === "job"),
+      quickCount: items.filter((i) => i.type === "quick").length,
+      siteLogins: items.filter((i) => matchesSite(i, sender.url)).length,
+    };
+  },
+
+  async suggest({ field }, sender) {
+    const ctx = await unlocked().catch(() => null);
+    if (!ctx) return { locked: true };
+    const items = liveItems(ctx.vault);
+    if (field.type === "password" || /user|login|email/i.test(`${field.autocomplete} ${field.name} ${field.id}`)
+        && items.some((i) => matchesSite(i, sender.url))) {
+      const logins = items.filter((i) => matchesSite(i, sender.url))
+        .map((i) => ({ id: i.id, name: i.name, username: i.username }));
+      const quick = field.type === "password"
+        ? items.filter((i) => i.type === "quick").map((i) => ({ id: i.id, name: i.name })) : [];
+      if (logins.length || quick.length || field.type === "password") return { kind: "login", logins, quick, host: safeHost(sender.url) };
+    }
+    const profile = jobProfileOf(ctx.vault);
+    if (!profile) return { kind: "job", empty: true };
+    return { kind: "job", suggestions: suggest(field, profile), facts: profileFacts(profile) };
+  },
+
+  async login({ id }, sender) {
+    const { vault } = await unlocked();
+    const item = liveItems(vault).find((i) => i.id === id && i.type === "login");
+    if (!item || !matchesSite(item, sender.url)) throw new Error("That login isn't for this site");
+    return { username: item.username, password: item.password };
+  },
+
+  async quick({ id }) {
+    const { vault } = await unlocked();
+    const item = liveItems(vault).find((i) => i.id === id && i.type === "quick");
+    if (!item) throw new Error("Quick password not found");
+    return { password: item.password };
+  },
+
+  async plan({ fields }) {
+    const ctx = await unlocked();
+    const profile = jobProfileOf(ctx.vault);
+    if (!profile) throw new Error("Add your work profile in Lockbox first");
+    const values = [];
+    let needsResume = false;
+    for (const f of fields) {
+      const r = classify(f, profile);
+      if (r) {
+        values.push({ index: f.index, key: r.key, value: r.value });
+        if (r.value === "__resume__") needsResume = true;
+      }
+    }
+    return { values, resume: needsResume ? await resumeFile(ctx.key) : null };
+  },
+
+  async offerSave({ url, username, password }, sender) {
+    const local = await loadLocal();
+    const host = safeHost(url);
+    if (!local || !password || !host || local.settings.neverSave.includes(host)) return { prompt: false };
+    const ctx = await unlocked().catch(() => null);
+    if (ctx) {
+      const same = liveItems(ctx.vault).find((i) => matchesSite(i, url) && i.username === username);
+      if (same && same.password === password) return { prompt: false };
+    }
+    const pending = await getPending();
+    pending[sender.tab.id] = { url, username, password, at: Date.now(),
+      update: !!ctx && liveItems(ctx.vault).some((i) => matchesSite(i, url) && i.username === username) };
+    await setPending(pending);
+    return { prompt: true };
+  },
+
+  async pendingSave(_msg, sender) {
+    const pending = await getPending();
+    const p = pending[sender.tab.id];
+    if (!p || Date.now() - p.at > 5 * 60_000) return null;
+    return { host: safeHost(p.url), username: p.username, update: p.update, locked: !(await getSession()) };
+  },
+
+  async answerSave({ answer }, sender) {
+    const pending = await getPending();
+    const p = pending[sender.tab.id];
+    delete pending[sender.tab.id];
+    await setPending(pending);
+    if (!p) return { ok: false };
+    if (answer === "never") {
+      const local = await loadLocal();
+      local.settings.neverSave = [...new Set([...local.settings.neverSave, safeHost(p.url)])];
+      await saveLocal(local);
+      return { ok: true };
+    }
+    if (answer !== "save") return { ok: true };
+    const ctx = await unlocked();
+    const existing = liveItems(ctx.vault).find((i) => matchesSite(i, p.url) && i.username === p.username);
+    const { vault } = upsertItem(ctx.vault, { ...(existing || {}), id: existing?.id, type: "login",
+      name: existing?.name || safeHost(p.url), url: existing?.url || p.url, username: p.username, password: p.password });
+    await persist(ctx, vault);
+    return { ok: true };
+  },
+};
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  // Only our own extension pages may talk to the vault.
-  if (sender.id !== chrome.runtime.id || !sender.url?.startsWith(chrome.runtime.getURL(""))) return false;
-  const handler = handlers[msg?.type];
+  if (sender.id !== chrome.runtime.id) return false;
+  const fromExtensionPage = sender.url?.startsWith(chrome.runtime.getURL(""));
+  let handler;
+  if (fromExtensionPage) handler = handlers[msg?.type];
+  else if (sender.tab && typeof msg?.type === "string" && msg.type.startsWith("cs:")) {
+    handler = contentHandlers[msg.type.slice(3)];
+  }
   if (!handler) return false;
-  Promise.resolve(handler(msg))
+  Promise.resolve(handler(msg, sender))
     .then((data) => sendResponse({ ok: true, data }))
     .catch((err) => sendResponse({ ok: false, error: err.message }));
   return true;   // async response
+});
+
+chrome.tabs.onRemoved?.addListener(async (tabId) => {
+  const pending = await getPending();
+  if (pending[tabId]) {
+    delete pending[tabId];
+    await setPending(pending);
+  }
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
@@ -294,6 +485,10 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 });
 
 chrome.commands.onCommand.addListener(async (command) => {
+  if (command === "fill-application") {
+    handlers.fillApplication().catch(() => {});
+    return;
+  }
   if (command !== "fill-login") return;
   try {
     const { vault } = await unlocked();
