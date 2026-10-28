@@ -1,0 +1,79 @@
+:root {
+  --bg: #ffffff; --surface: #f5f6f8; --surface-2: #eceef2; --border: #e2e5ea;
+  --text: #111418; --muted: #5d6572; --accent: #2f6fed; --accent-text: #fff;
+  --danger: #c93a3a; --ok: #1f9d55; --warn: #c98a12; --radius: 10px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15171c; --surface: #1d2027; --surface-2: #262a33; --border: #2f343e;
+    --text: #eef0f4; --muted: #9aa1ad; --accent: #5b8cff; --accent-text: #0b0d12;
+    --danger: #f07070; --ok: #4ade80; --warn: #fbbf24; color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body { width: 370px; min-height: 420px; max-height: 600px; font: 13.5px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+button, input, textarea, select { font: inherit; color: inherit; }
+.bar { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg); z-index: 2; }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; letter-spacing: -.01em; }
+.logo { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg, var(--accent), #8b5cf6); position: relative; }
+.logo::after { content: ""; position: absolute; left: 7px; top: 6px; width: 8px; height: 10px; border: 2px solid #fff; border-radius: 2px 2px 3px 3px; border-top-width: 4px; }
+.bar-actions { display: flex; align-items: center; gap: 4px; }
+.icon-btn { width: 30px; height: 30px; border: 0; border-radius: 8px; background: transparent; cursor: pointer; font-size: 15px; }
+.icon-btn:hover { background: var(--surface-2); }
+.sync-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); margin-right: 6px; }
+.sync-dot.ok { background: var(--ok); } .sync-dot.err { background: var(--danger); }
+main { padding: 14px; }
+h1 { font-size: 18px; margin: 4px 0 6px; letter-spacing: -.02em; }
+h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 16px 0 8px; font-weight: 700; }
+p.sub { color: var(--muted); margin: 0 0 14px; }
+label.field { display: block; margin-bottom: 10px; }
+label.field span { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+input[type=text], input[type=password], input[type=url], input[type=email], input[type=number], textarea, select {
+  width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); outline: none; }
+input:focus, textarea:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+textarea { min-height: 90px; resize: vertical; }
+.row { display: flex; gap: 8px; align-items: center; }
+.row > * { flex: 1; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; font-weight: 600; white-space: nowrap; }
+.btn:hover { background: var(--surface-2); }
+.btn.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.btn.primary:hover { filter: brightness(1.07); }
+.btn.danger { color: var(--danger); }
+.btn.sm { height: 28px; padding: 0 10px; font-size: 12px; }
+.btn.block { width: 100%; }
+.btn:disabled { opacity: .55; cursor: default; }
+.strength { height: 5px; border-radius: 99px; background: var(--surface-2); overflow: hidden; margin: -4px 0 4px; }
+.strength i { display: block; height: 100%; transition: width .2s; }
+.hint { font-size: 12px; color: var(--muted); margin: 0 0 10px; }
+.warn-box { font-size: 12px; background: color-mix(in srgb, var(--warn) 14%, transparent); border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; }
+.err { color: var(--danger); font-size: 12.5px; min-height: 18px; margin: 4px 0; }
+.site { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: var(--radius); background: var(--surface); margin-bottom: 10px; gap: 8px; }
+.site b { font-size: 13px; word-break: break-all; }
+.site small { display: block; color: var(--muted); }
+.tabs { display: flex; gap: 4px; background: var(--surface); padding: 3px; border-radius: 9px; margin: 10px 0; }
+.tabs button { flex: 1; border: 0; background: transparent; height: 28px; border-radius: 7px; cursor: pointer; font-weight: 600; color: var(--muted); }
+.tabs button.on { background: var(--bg); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.list { display: flex; flex-direction: column; gap: 2px; }
+.item { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 8px; cursor: pointer; }
+.item:hover { background: var(--surface); }
+.avatar { width: 30px; height: 30px; border-radius: 8px; background: var(--surface-2); display: grid; place-items: center; font-weight: 700; flex: none; text-transform: uppercase; }
+.item .meta { flex: 1; min-width: 0; }
+.item .meta b, .item .meta small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item .meta small { color: var(--muted); }
+.item .acts { display: flex; gap: 4px; }
+.empty { text-align: center; color: var(--muted); padding: 28px 10px; }
+.toolbar { display: flex; gap: 8px; }
+.toolbar input { flex: 1; }
+.back { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0; margin-bottom: 8px; font-weight: 600; }
+.pw-wrap { position: relative; }
+.pw-wrap input { padding-right: 64px; }
+.pw-wrap .reveal { position: absolute; right: 4px; top: 4px; height: 26px; }
+.foot-actions { display: flex; gap: 8px; margin-top: 14px; }
+.foot-actions .spacer { flex: 1; }
+.kv { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; }
+.toast { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 7px 12px; border-radius: 8px; font-size: 12.5px; font-weight: 600; z-index: 5; max-width: 330px; text-align: center; }
+.toast.error { background: var(--danger); color: #fff; }
+.status-line { font-size: 12px; color: var(--muted); margin: 6px 0 10px; }

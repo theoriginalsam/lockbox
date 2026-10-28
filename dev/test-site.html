@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Test site</title>
+  <style>
+    body { font: 14px system-ui; margin: 24px; color: #222; }
+    form { border: 1px solid #ddd; border-radius: 10px; padding: 16px; margin-bottom: 18px; max-width: 360px; }
+    label { display: block; margin: 8px 0; } input, select { width: 100%; padding: 6px; }
+    h2 { margin: 0 0 8px; font-size: 16px; }
+  </style>
+</head>
+<body>
+  <form id="login" onsubmit="event.preventDefault()">
+    <h2>Sign in</h2>
+    <label>Email <input id="user" name="login_email" type="email"></label>
+    <label>Password <input id="pass" name="pw" type="password"></label>
+    <button>Sign in</button>
+  </form>
+
+  <form id="signup" onsubmit="event.preventDefault()">
+    <h2>Shipping details</h2>
+    <label>First name <input id="fn" autocomplete="given-name"></label>
+    <label>Last name <input id="ln" name="lastName"></label>
+    <label>Email address <input id="em" name="contact_email" type="email"></label>
+    <label>Mobile <input id="ph" name="mobile"></label>
+    <label for="zip">ZIP / Postal code</label><input id="zip" name="zip">
+    <label>Country
+      <select id="country" name="country"><option value="">Choose…</option><option value="NP">Nepal</option><option value="US">United States</option></select>
+    </label>
+    <label><input type="hidden" id="trap" name="hidden_email"></label>
+  </form>
+</body>
+</html>

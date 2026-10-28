@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Lockbox harness</title>
+  <style>
+    body { margin: 0; display: flex; gap: 16px; padding: 16px; background: #e9ecf1; font: 13px system-ui; }
+    .col { display: flex; flex-direction: column; gap: 6px; }
+    iframe { border: 1px solid #c8ced8; border-radius: 12px; background: #fff; }
+  </style>
+</head>
+<body>
+  <div class="col"><b>Popup (real code, mocked chrome.*)</b><iframe id="popup" src="popup.html" width="372" height="600"></iframe></div>
+  <div class="col"><b>Active tab</b><iframe id="site" src="test-site.html" width="460" height="760"></iframe></div>
+</body>
+</html>

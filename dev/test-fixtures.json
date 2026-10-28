@@ -1,0 +1,6 @@
+{
+  "_comment": "Fake values for the dev harness only. Never use these for anything real.",
+  "masterPassword": "harness-only Plum Ladder 4417 Violet",
+  "login": { "url": "http://localhost:8099", "username": "tester@example.test", "password": "fake-Pass-123!" },
+  "profile": { "givenName": "Test", "familyName": "User", "email": "tester@example.test", "phone": "555-0100", "postalCode": "44600", "country": "Nepal" }
+}

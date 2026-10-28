@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Lockbox</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="bar">
+    <div class="brand"><span class="logo" aria-hidden="true"></span>Lockbox</div>
+    <div class="bar-actions" id="bar-actions" hidden>
+      <span class="sync-dot" id="sync-dot" title="Sync off"></span>
+      <button class="icon-btn" id="btn-settings" title="Settings" aria-label="Settings">⚙</button>
+      <button class="icon-btn" id="btn-lock" title="Lock now" aria-label="Lock">🔒</button>
+    </div>
+  </header>
+  <main id="app" aria-live="polite"></main>
+  <div class="toast" id="toast" role="status" hidden></div>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
