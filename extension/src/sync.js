@@ -1,7 +1,7 @@
 // Client for the sync API on samirpoudel.com.np. The server only ever sees the sealed vault
 // (ciphertext + KDF params) and a token derived from the master password.
 
-export const DEFAULT_API = "https://www.samirpoudel.com.np/api/vault";
+export const DEFAULT_API = "https://www.samirpoudel.com.np/api/lockbox";
 
 export class SyncError extends Error {
   constructor(message, status) {

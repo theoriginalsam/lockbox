@@ -46,4 +46,4 @@ without installing the extension. `dev/test-fixtures.json` holds fake values for
 - Logins inside iframes (some banks) aren't filled: top frame only, by design for now.
 - No master-password change yet (needs re-encryption plus a server-side rotation endpoint).
 - Copied passwords aren't auto-cleared from the clipboard.
-- Sync API (`/api/vault` on samirpoudel.com.np) is a separate step.
+- Sync API lives in the samir-portfolio repo at `/api/lockbox` (see `lockbox_schema.sql` there).
