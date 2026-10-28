@@ -302,13 +302,28 @@
       for (const q of data.quick) {
         list.append(option(q.name, "••••••••••", async () => {
           const { password } = await ask("quick", { id: q.id });
-          setValue(field, password);
+          for (const target of newPasswordFields(field)) setValue(target, password);
           closeMenu();
         }));
       }
     }
     if (!list.children.length) list.append(el("div", { class: "note" }, "Nothing saved for this site yet. After you sign in, Lockbox will offer to save the login."));
     menu.lastChild.replaceWith(list);
+  }
+
+  /**
+   * The tapped password field plus, on sign-up forms, its "confirm password" twin. Never a
+   * "current password" box (change-password forms), and never a field that already has text.
+   */
+  function newPasswordFields(field) {
+    const scope = field.form || field.closest("form, [role=form], main, section, div") || document;
+    const isCurrent = (el) => /current-password/.test(el.autocomplete || "")
+      || /current|old|existing/i.test(`${el.name} ${el.id} ${labelFor(el)}`);
+    const others = [...scope.querySelectorAll('input[type="password"]')]
+      .filter((el) => el !== field && visible(el) && !el.value && !isCurrent(el));
+    const signUp = /new-password/.test(field.autocomplete || "") || others.some((el) =>
+      /new-password/.test(el.autocomplete || "") || /confirm|repeat|retype|re-enter|again|verify/i.test(`${el.name} ${el.id} ${labelFor(el)}`));
+    return isCurrent(field) || !signUp ? [field] : [field, ...others.slice(0, 1)];
   }
 
   function fillLoginNear(field, username, password) {

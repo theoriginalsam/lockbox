@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Fake app · Create account</title>
+  <style>
+    body { font: 14px system-ui; margin: 30px; } form { max-width: 320px; margin-bottom: 26px; border: 1px solid #ddd; padding: 14px; border-radius: 10px; }
+    label { display: block; margin: 8px 0 4px; font-weight: 600; } input { width: 100%; padding: 7px; }
+  </style>
+</head>
+<body>
+  <form id="signup" onsubmit="event.preventDefault()">
+    <h3>Create account</h3>
+    <label for="em">Email</label><input id="em" type="email" autocomplete="email">
+    <label for="np">Password</label><input id="np" type="password" autocomplete="new-password">
+    <label for="cp">Confirm password</label><input id="cp" type="password" name="password_confirmation">
+    <button>Sign up</button>
+  </form>
+  <form id="change" onsubmit="event.preventDefault()">
+    <h3>Change password</h3>
+    <label for="cur">Current password</label><input id="cur" type="password" autocomplete="current-password">
+    <label for="new">New password</label><input id="new" type="password" autocomplete="new-password">
+    <label for="rep">Repeat new password</label><input id="rep" type="password">
+    <button>Change</button>
+  </form>
+  <script src="../dev/site-loader.js"></script>
+  <script src="../extension/src/content.js"></script>
+</body>
+</html>
