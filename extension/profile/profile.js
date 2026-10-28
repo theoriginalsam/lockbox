@@ -202,10 +202,51 @@ function answersCard() {
     h("button", { class: "btn sm", type: "button", onclick: () => { a.custom[`new question ${Object.keys(a.custom).length + 1}`] = ""; markDirty(); drawQa(); } }, "+ Add answer"));
 }
 
+// ---------------------------------------------------------------- bundled profile (one-click import)
+
+/** A my-profile.json dropped into the extension folder (git-ignored) is offered for import. */
+async function bundledProfile() {
+  try {
+    const res = await fetch(chrome.runtime.getURL("my-profile.json"), { cache: "no-store" });
+    return res.ok ? normalizeProfile(await res.json()) : null;
+  } catch {
+    return null;
+  }
+}
+
+let bundled = null;
+let hasSavedProfile = false;
+
+function bundledCard() {
+  if (!bundled || hasSavedProfile) return null;
+  const go = h("button", { class: "btn primary", type: "button" }, "Import my profile");
+  go.addEventListener("click", async () => {
+    go.disabled = true;
+    profile = bundled;
+    try {
+      await send("jobProfileSave", { profile });
+      hasSavedProfile = true;
+      dirty = false;
+      saveState.textContent = "Imported and saved. Fill in the blanks under Application answers.";
+      render();
+      scrollTo({ top: 0 });
+    } catch (err) {
+      go.disabled = false;
+      alert(err.message);
+    }
+  });
+  const c = bundled.contact;
+  return h("section", { class: "card", style: "border-color:var(--accent)" },
+    h("h2", {}, `Found your profile: ${c.name || "unnamed"}`),
+    h("p", { class: "hint" }, `${bundled.experience.length} roles · ${bundled.education.length} schools · ${bundled.projects.length} projects · ${bundled.skills.length} skills. `
+      + "Importing encrypts it into your vault; afterwards you can delete my-profile.json from the extension folder."),
+    go);
+}
+
 // ---------------------------------------------------------------- shell
 
 function render() {
-  main.replaceChildren(
+  main.replaceChildren(bundledCard() || "",
     h("div", { class: "banner" }, "Fill a whole application: open it and press ", h("code", {}, "⌘/Ctrl+Shift+Y"),
       ", click Lockbox → Fill application, or the blue Fill button on the page. Tap any field for a menu of your details. Lockbox never submits for you."),
     importCard(), resumeCard(), contactCard(), aboutCard(), experienceSection(), educationSection(), projectsSection(), answersCard());
@@ -231,6 +272,8 @@ addEventListener("beforeunload", (e) => { if (dirty) e.preventDefault(); });
     const data = await send("jobProfileGet");
     profile = normalizeProfile(data.profile);
     resume = data.resume;
+    hasSavedProfile = !!data.id;
+    bundled = await bundledProfile();
     render();
   } catch (err) {
     saveBtn.hidden = true;

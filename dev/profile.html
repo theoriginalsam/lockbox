@@ -20,7 +20,7 @@
     const fx = await (await fetch("test-fixtures.json")).json();
     const send = (type, p = {}) => chrome.runtime.sendMessage({ type, ...p });
     await send("create", { password: fx.masterPassword });
-    await send("jobProfileSave", { profile: fx.jobProfile });
+    if (!location.search.includes("fresh")) await send("jobProfileSave", { profile: fx.jobProfile });
     await send("resumeUpload", { name: "Test_Resume.pdf", mime: "application/pdf", b64: fx.resumeB64 });
     await import("../extension/profile/profile.js");
   </script>

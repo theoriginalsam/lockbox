@@ -1,3 +1,5 @@
 .DS_Store
 node_modules/
 *.pem
+my-profile.json
+extension/my-profile.json
