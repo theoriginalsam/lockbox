@@ -188,6 +188,7 @@
     const style = document.createElement("style");
     style.textContent = CSS_TEXT;
     root.append(style);
+    root.addEventListener("focusout", () => closeIfFocusLeft());
     document.documentElement.append(host);
   }
 
@@ -222,7 +223,8 @@
   function placeNear(node, field, { below = false } = {}) {
     const r = field.getBoundingClientRect();
     if (below) {
-      const top = r.bottom + 4 + 360 > innerHeight && r.top > 380 ? r.top - 4 - Math.min(360, node.offsetHeight || 360) : r.bottom + 4;
+      const height = Math.min(360, node.offsetHeight || 360);
+      const top = r.bottom + 4 + height > innerHeight && r.top > height + 8 ? r.top - 4 - height : r.bottom + 4;
       node.style.top = `${Math.max(4, top)}px`;
       node.style.left = `${Math.max(4, Math.min(r.left, innerWidth - 348))}px`;
     } else {
@@ -268,10 +270,12 @@
       return renderNote(err.message);
     }
     if (!menu) return;
-    if (!data || data.locked) return renderNote("Lockbox is locked. Click the Lockbox icon in the toolbar to unlock, then tap the field again.");
-    if (data.kind === "login") return renderLogin(field, data);
-    if (data.empty) return renderNote("Add your work profile in Lockbox (toolbar icon → Work profile) to fill job applications.");
-    renderJob(field, data);
+    if (!data || data.locked) renderNote("Lockbox is locked. Click the Lockbox icon in the toolbar to unlock, then tap the field again.");
+    else if (data.kind === "login") renderLogin(field, data);
+    else if (data.empty) renderNote("Add your work profile in Lockbox (toolbar icon → Work profile) to fill job applications.");
+    else renderJob(field, data);
+    // Re-place now that the real height is known, so an upward-opening menu never covers the field.
+    if (menu) placeNear(menu, field, { below: true });
   }
 
   function renderNote(text) {
@@ -348,17 +352,37 @@
       closeMenu();
       flash(field, "#1f9d55");
     };
+    let items = [];
+    let selected = 0;
     const draw = () => {
       const q = search.value.trim().toLowerCase();
-      const items = q
+      items = q
         ? data.facts.filter((f) => `${f.label} ${f.value}`.toLowerCase().includes(q)).slice(0, 30)
         : data.suggestions;
+      selected = 0;
       list.replaceChildren(...(items.length
-        ? items.map((f) => option(f.label, f.value, pick(f.value), f.best ? "best" : ""))
+        ? items.map((f, i) => option(f.label, f.value, pick(f.value), `${f.best ? "best" : ""}${i === selected && q ? " sel" : ""}`))
         : [el("div", { class: "note" }, "No match in your profile. Save a custom answer in Lockbox → Work profile.")]));
     };
     search.addEventListener("input", draw);
-    search.addEventListener("mousedown", (e) => e.stopPropagation());
+    search.addEventListener("mousedown", (e) => e.stopPropagation());   // let the search box take focus
+    search.addEventListener("keydown", (e) => {
+      if (!e.isTrusted) return;
+      const opts = list.querySelectorAll(".opt");
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        selected = Math.max(0, Math.min(items.length - 1, selected + (e.key === "ArrowDown" ? 1 : -1)));
+        opts.forEach((o, i) => o.classList.toggle("sel", i === selected));
+        opts[selected]?.scrollIntoView({ block: "nearest" });
+      } else if (e.key === "Enter" && items[selected]) {
+        e.preventDefault();
+        pick(items[selected].value)();
+      } else if (e.key === "Escape") {
+        closeMenu();
+        activeField?.focus();
+      }
+      e.stopPropagation();
+    });
     draw();
     wrap.append(search, list);
     menu.lastChild.replaceWith(wrap);
@@ -529,15 +553,20 @@
     if (status.unlocked && field.type !== "password" && application && status.hasProfile && !field.value) openMenu(field);
   }, true);
 
-  document.addEventListener("focusout", (e) => {
+  // Close when focus leaves both the field and Lockbox's own UI. Focus inside our shadow root
+  // (the menu's search box) shows up as document.activeElement === host.
+  function closeIfFocusLeft() {
     setTimeout(() => {
-      if (document.activeElement === e.target) return;
-      if (activeField === e.target) {
-        hideBadge();
-        closeMenu();
-        activeField = null;
-      }
+      const a = document.activeElement;
+      if (!activeField || a === activeField || (host && a === host)) return;
+      hideBadge();
+      closeMenu();
+      activeField = null;
     }, 150);
+  }
+
+  document.addEventListener("focusout", (e) => {
+    if (e.target === activeField) closeIfFocusLeft();
   }, true);
 
   document.addEventListener("keydown", (e) => {
