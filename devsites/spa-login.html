@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Fake SPA login (like a Next.js router.replace)</title>
+<style>body { font: 14px system-ui; margin: 30px; } input { padding: 7px; width: 240px; }</style></head>
+<body>
+  <main id="app">
+    <form id="login">
+      <h3>Private chat</h3>
+      <label for="pw">Password</label><br><input id="pw" type="password" autocomplete="current-password">
+      <button type="submit">Log in</button>
+    </form>
+  </main>
+  <script>
+    // Logs in without a page load: swaps the screen and the URL, like Next.js router.replace('/chat').
+    document.getElementById("login").addEventListener("submit", (e) => {
+      e.preventDefault();
+      setTimeout(() => {
+        history.replaceState({}, "", location.pathname + "?chat");
+        document.getElementById("app").innerHTML = "<h3>Chat</h3><p>Welcome back.</p>";
+      }, 300);
+    });
+  </script>
+  <script src="../dev/site-loader.js"></script>
+  <script src="../extension/src/content.js"></script>
+</body>
+</html>

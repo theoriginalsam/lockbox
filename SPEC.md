@@ -46,7 +46,7 @@ tombstones `{ id, type, deleted: true, updatedAt }`.
 |---|---|
 | `login` | `url` (origin, e.g. `https://github.com`), `username`, `password`, `notes` |
 | `note` | `text` |
-| `profile` | `fields`: givenName, familyName, email, phone, organization, address1, address2, city, state, postalCode, country |
+| `profile` | `fields`: givenName, familyName, email, phone, dateOfBirth (YYYY-MM-DD), organization, address1, address2, city, state, postalCode, country; `notes` (free text) |
 | `quick` | `password`: a reused password offered on new sites |
 | `job` | `profile`: Nightshift `profile.yaml` schema (contact, headline, summary, experience[], projects[], education[], skills[], certifications[], answers{…, custom{}}) |
 

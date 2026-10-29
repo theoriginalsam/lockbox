@@ -35,7 +35,17 @@
   }
 
   async function refreshStatus() {
-    status = await ask("status").catch(() => null);
+    // Don't fail silently: an invisible helper is impossible to debug. If the background can't
+    // answer, show the badge anyway (its menu reports the error) and leave a console trace.
+    const fail = (why) => {
+      // After Lockbox is reloaded or updated, scripts left in already-open tabs lose their link to
+      // it. That's expected (refreshing the tab fixes it), not an error: stay silent and hidden.
+      if (!chrome.runtime?.id || /context invalidated|Receiving end/i.test(why)) return { setup: false };
+      console.debug("[Lockbox] status check failed:", why);
+      return { setup: true, unlocked: false, inline: true, error: why };
+    };
+    if (!chrome.runtime?.id) { teardown(); return (status = { setup: false }); }
+    status = await ask("status").catch((err) => fail(err?.message || String(err))) || fail("no answer from background");
     return status;
   }
 
@@ -132,65 +142,66 @@
 
   // ---------------------------------------------------------------- UI shell (closed shadow root)
 
+  // Monochrome like the popup; colour only for status. Light/dark follows the page (data-theme).
   const CSS_TEXT = `
-    :host { all: initial; }
-    * { box-sizing: border-box; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+    :host { all: initial; --bg: #fff; --surface: #f5f5f5; --border: #e5e5e5; --border-strong: #d4d4d4; --text: #0a0a0a;
+      --muted: #737373; --accent: #0a0a0a; --accent-text: #fff; --ok: #16a34a; --warn: #ca8a04; --danger: #dc2626; }
+    :host([data-theme="dark"]) { --bg: #141414; --surface: #222; --border: #2e2e2e; --border-strong: #404040; --text: #fafafa;
+      --muted: #a1a1a1; --accent: #fafafa; --accent-text: #0a0a0a; --ok: #22c55e; --warn: #eab308; --danger: #ef4444; }
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased; }
     .badge { position: fixed; width: 22px; height: 22px; display: grid; place-items: center; padding: 0; cursor: pointer;
-      border-radius: 6px; border: 1px solid rgba(15,20,30,.14); background: #fff; color: #2f6fed;
-      box-shadow: 0 1px 2px rgba(15,20,30,.08); transition: background .12s, border-color .12s; z-index: 2147483647; }
-    .badge:hover, .badge:focus-visible { background: #eef3ff; border-color: #2f6fed; outline: none; }
-    .badge svg { width: 13px; height: 13px; display: block; }
-    .menu { position: fixed; width: 340px; max-height: 360px; display: flex; flex-direction: column; background: #fff; color: #111418;
-      border: 1px solid #dfe3ea; border-radius: 12px; box-shadow: 0 12px 32px rgba(15,20,30,.22); z-index: 2147483647; overflow: hidden; font-size: 13px; }
-    .head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid #eef0f4; font-weight: 700; }
-    .head small { font-weight: 500; color: #6b7280; margin-left: auto; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .dot { width: 16px; height: 16px; display: grid; place-items: center; color: #2f6fed; flex: none; }
-    .dot svg { width: 14px; height: 14px; display: block; }
-    input.search { margin: 8px 10px 4px; padding: 7px 9px; border: 1px solid #dfe3ea; border-radius: 8px; font-size: 13px; outline: none; }
-    input.search:focus { border-color: #2f6fed; }
+      border-radius: 6px; border: 1px solid var(--border-strong); background: var(--bg); color: var(--text);
+      box-shadow: 0 1px 2px rgba(0,0,0,.08); transition: background .12s, border-color .12s, transform .12s; z-index: 2147483647; }
+    .badge:hover, .badge:focus-visible { background: var(--accent); color: var(--accent-text); border-color: var(--accent); outline: none; }
+    .badge svg { width: 12px; height: 12px; display: block; }
+    .menu { position: fixed; width: 340px; max-height: 360px; display: flex; flex-direction: column; background: var(--bg); color: var(--text);
+      border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 16px 40px rgba(0,0,0,.18), 0 2px 6px rgba(0,0,0,.06);
+      z-index: 2147483647; overflow: hidden; font-size: 13px; }
+    .head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); font-weight: 650; letter-spacing: -.01em; }
+    .head small { font-weight: 450; color: var(--muted); margin-left: auto; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dot { width: 18px; height: 18px; display: grid; place-items: center; flex: none; border-radius: 5px; background: var(--accent); color: var(--accent-text); }
+    .dot svg { width: 11px; height: 11px; display: block; }
+    input.search { margin: 8px 10px 4px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; outline: none;
+      background: var(--bg); color: var(--text); }
+    input.search:focus { border-color: var(--text); box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 12%, transparent); }
     .list { overflow: auto; padding: 4px; }
-    .opt { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 7px 9px; border-radius: 8px; cursor: pointer; color: inherit; }
-    .opt:hover, .opt.sel { background: #eef3ff; }
-    .opt b { display: block; font-size: 11.5px; color: #4b5563; font-weight: 600; margin-bottom: 1px; }
+    .opt { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 7px 9px; border-radius: 7px; cursor: pointer; color: inherit; }
+    .opt:hover, .opt.sel { background: var(--surface); }
+    .opt b { display: block; font-size: 11.5px; color: var(--muted); font-weight: 550; margin-bottom: 1px; }
     .opt span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-    .opt.best b { color: #2f6fed; }
-    .opt.best b::before { content: "★ "; }
-    .sec { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: #8a909b; font-weight: 700; padding: 8px 9px 3px; }
-    .note { padding: 12px; color: #4b5563; line-height: 1.45; }
-    .ai { display: block; width: calc(100% - 8px); margin: 4px; text-align: left; border: 1px dashed #b9c8f5; background: #f5f8ff;
-      color: #2f6fed; padding: 8px 10px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; }
-    .ai:hover { background: #eaf0ff; }
-    .draft { margin: 8px 10px; padding: 10px; border: 1px solid #dfe3ea; border-radius: 8px; max-height: 190px; overflow: auto;
-      white-space: pre-wrap; line-height: 1.45; font-size: 13px; }
-    .meta { padding: 0 12px 4px; font-size: 11px; color: #8a909b; }
-    .warn { font-size: 11.5px; color: #8a5a00; background: #fff6df; padding: 6px 9px; margin: 4px; border-radius: 6px; }
-    .foot { display: flex; gap: 6px; padding: 8px; border-top: 1px solid #eef0f4; }
-    .btn { flex: 1; height: 30px; border-radius: 8px; border: 1px solid #dfe3ea; background: #f5f6f8; cursor: pointer; font-weight: 600; font-size: 12.5px; color: #111418; }
-    .btn.primary { background: #2f6fed; color: #fff; border-color: #2f6fed; }
-    .toast { position: fixed; right: 18px; bottom: 18px; width: 320px; background: #111418; color: #fff; border-radius: 12px; padding: 12px 14px;
-      box-shadow: 0 12px 32px rgba(0,0,0,.3); z-index: 2147483647; font-size: 13px; line-height: 1.45; }
+    .opt.best b { color: var(--ok); }
+    .opt.best b::before { content: "● "; font-size: 9px; vertical-align: 1px; }
+    .sec { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; padding: 10px 9px 4px; }
+    .note { padding: 12px; color: var(--muted); line-height: 1.5; }
+    .ai { display: block; width: calc(100% - 8px); margin: 4px; text-align: left; border: 1px dashed var(--border-strong); background: var(--surface);
+      color: var(--text); padding: 8px 10px; border-radius: 8px; cursor: pointer; font-weight: 550; font-size: 13px; }
+    .ai:hover { border-style: solid; border-color: var(--text); }
+    .draft { margin: 8px 10px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; max-height: 190px; overflow: auto;
+      white-space: pre-wrap; line-height: 1.5; font-size: 13px; }
+    .meta { padding: 0 12px 4px; font-size: 11px; color: var(--muted); }
+    .warn { font-size: 11.5px; color: var(--text); background: color-mix(in srgb, var(--warn) 12%, var(--bg));
+      border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--border)); padding: 6px 9px; margin: 4px; border-radius: 6px; }
+    .foot { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--border); }
+    .btn { flex: 1; height: 30px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg); cursor: pointer; font-weight: 550;
+      font-size: 12.5px; color: var(--text); transition: background .12s, border-color .12s, opacity .12s; }
+    .btn:hover { border-color: var(--border-strong); background: var(--surface); }
+    .btn.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+    .btn.primary:hover { opacity: .88; }
+    /* Toasts are always dark, whatever the page. */
+    .toast { position: fixed; right: 18px; bottom: 18px; width: 320px; background: #0a0a0a; color: #fafafa; border: 1px solid #262626;
+      border-radius: 12px; padding: 13px 14px; box-shadow: 0 16px 40px rgba(0,0,0,.35); z-index: 2147483647; font-size: 13px; line-height: 1.5; }
     .toast .row { display: flex; gap: 6px; margin-top: 10px; }
-    .toast .btn { background: #2a2f39; border-color: #3a404c; color: #fff; }
-    .toast .btn.primary { background: #5b8cff; border-color: #5b8cff; color: #0b0d12; }
-    .toast ul { margin: 6px 0 0; padding-left: 18px; max-height: 120px; overflow: auto; color: #c9ced7; }
-    .toast li { cursor: pointer; } .toast li:hover { text-decoration: underline; }
-    .fab { position: fixed; right: 18px; bottom: 18px; height: 40px; padding: 0 16px 0 12px; border-radius: 999px; border: 0; cursor: pointer;
-      background: #2f6fed; color: #fff; font-weight: 700; font-size: 13px; box-shadow: 0 8px 24px rgba(47,111,237,.45); z-index: 2147483646;
-      display: flex; align-items: center; gap: 8px; }
-    .fab .dot { color: #fff; }
-    :host([data-theme="dark"]) .badge { background: #1d2027; border-color: #3a404c; color: #8fb0ff; }
-    :host([data-theme="dark"]) .badge:hover, :host([data-theme="dark"]) .badge:focus-visible { background: #262f45; border-color: #8fb0ff; }
-    :host([data-theme="dark"]) .dot { color: #8fb0ff; }
-    :host([data-theme="dark"]) .ai { background: #1f2a44; border-color: #3a4f86; color: #9bb8ff; }
-    :host([data-theme="dark"]) .draft { border-color: #2f343e; }
-    :host([data-theme="dark"]) .menu { background: #1d2027; color: #eef0f4; border-color: #2f343e; }
-    :host([data-theme="dark"]) .head, :host([data-theme="dark"]) .foot { border-color: #2f343e; }
-    :host([data-theme="dark"]) .opt b { color: #9aa1ad; }
-    :host([data-theme="dark"]) .opt:hover, :host([data-theme="dark"]) .opt.sel { background: #262f45; }
-    :host([data-theme="dark"]) input.search { background: #15171c; color: #eef0f4; border-color: #2f343e; }
-    :host([data-theme="dark"]) .btn { background: #262a33; color: #eef0f4; border-color: #2f343e; }
-    :host([data-theme="dark"]) .note { color: #c3c7cf; }
-    }`;
+    .toast .btn { background: #1a1a1a; border-color: #333; color: #fafafa; }
+    .toast .btn:hover { background: #262626; }
+    .toast .btn.primary { background: #fafafa; border-color: #fafafa; color: #0a0a0a; }
+    .toast ul { margin: 6px 0 0; padding-left: 18px; max-height: 120px; overflow: auto; color: #a1a1a1; }
+    .toast li { cursor: pointer; } .toast li:hover { color: #fafafa; text-decoration: underline; }
+    .fab { position: fixed; right: 18px; bottom: 18px; height: 40px; padding: 0 16px 0 12px; border-radius: 999px; border: 1px solid #262626; cursor: pointer;
+      background: #0a0a0a; color: #fafafa; font-weight: 600; font-size: 13px; box-shadow: 0 10px 28px rgba(0,0,0,.28); z-index: 2147483646;
+      display: flex; align-items: center; gap: 8px; transition: transform .12s; }
+    .fab:hover { transform: translateY(-1px); }
+    .fab .dot { background: #fafafa; color: #0a0a0a; }`;
 
   function ensureShell() {
     if (root) return;
@@ -311,6 +322,7 @@
     root.append(menu);
     placeNear(menu, field, { below: true });
 
+    if (status?.error) return renderNote(`Lockbox couldn't reach its background (${status.error}). Reload this page; if it keeps happening, reload Lockbox in chrome://extensions.`);
     let data;
     try {
       data = await ask("suggest", { field: desc });
@@ -318,7 +330,7 @@
       return renderNote(err.message);
     }
     if (!menu) return;
-    if (!data || data.locked) renderNote("🔒 Lockbox is locked. Click the Lockbox icon in your toolbar, unlock with your master password, then tap this field again.");
+    if (!data || data.locked) renderNote("Lockbox is locked. Click the Lockbox icon in your toolbar, unlock with your master password, then tap this field again.");
     else if (data.kind === "login") renderLogin(field, data);
     else if (data.empty) renderNote("Add your work profile in Lockbox (toolbar icon → Work profile) to fill job applications.");
     else renderJob(field, data);
@@ -360,6 +372,21 @@
       }
     }
     if (!list.children.length) list.append(el("div", { class: "note" }, "Nothing saved for this site yet. After you sign in, Lockbox will offer to save the login."));
+    // Manual fallbacks for when automatic detection misses a sign-in or password change.
+    list.append(el("div", { class: "sec" }, "Manage"));
+    const typed = readTypedLogin();
+    if (typed) {
+      list.append(option("Save the password typed here", typed.username || "No username on this page", async () => {
+        closeMenu();
+        const r = await ask("offerSave", { url: location.origin, username: typed.username, password: typed.password });
+        if (r?.prompt) await maybeAskToSave();
+        else showToast([el("div", {}, "This password is already saved (or this site is on your “Never” list in Settings).")], 4000);
+      }));
+    }
+    list.append(option(data.logins.length ? "Edit saved logins for this site" : "Open my logins", "Opens Lockbox in a tab", async () => {
+      closeMenu();
+      await ask("openManager");
+    }));
     menu.lastChild.replaceWith(list);
   }
 
@@ -417,7 +444,7 @@
     const textual = field.tagName === "TEXTAREA" || ["text", ""].includes(field.type);
     if (status?.aiReady && textual) {
       wrap.append(el("button", { class: "ai", type: "button", title: "Sends your work profile, this question and the page text to your OpenRouter model",
-        onclick: trusted(() => aiDraftFlow(field, describe(field))) }, "✨ Draft with AI"));
+        onclick: trusted(() => aiDraftFlow(field, describe(field))) }, "Draft with AI"));
     }
     search.addEventListener("keydown", (e) => {
       if (!e.isTrusted) return;
@@ -450,7 +477,7 @@
   async function aiDraftFlow(field, desc) {
     if (!menu) return;
     const body = menu.lastChild;
-    body.replaceWith(el("div", { class: "note" }, "✨ Drafting an answer from your profile…"));
+    body.replaceWith(el("div", { class: "note" }, "Drafting an answer from your profile…"));
     let result;
     try {
       result = await ask("aiDraft", { field: desc, page: pageContext(field) });
@@ -581,16 +608,42 @@
 
   // ---------------------------------------------------------------- save-login offers
 
+  /** The login typed on this page: username plus the password worth saving. On change/reset-
+   *  password and sign-up forms that's the NEW password (the field marked new-password, else the
+   *  last one: the new password or its confirmation), never "current password". */
+  function readTypedLogin() {
+    const pws = [...document.querySelectorAll('input[type="password"]')].filter((p) => p.value && visible(p));
+    if (!pws.length) return null;
+    const pw = pws.find((p) => /new-password/.test(p.autocomplete || "")) || pws[pws.length - 1];
+    const scope = pw.form || document;
+    const users = [...scope.querySelectorAll("input")].filter((i) => ["text", "email", "tel", ""].includes(i.type) && i.value && visible(i));
+    let user = users.find((i) => /username|email/.test(i.autocomplete || ""));
+    if (!user) for (const i of users) if (i.compareDocumentPosition(pw) & Node.DOCUMENT_POSITION_FOLLOWING) user = i;
+    return { pw, username: user?.value || "", password: pw.value };
+  }
+
   function watchLogins() {
     const capture = () => {
-      const pw = [...document.querySelectorAll('input[type="password"]')].find((p) => p.value && visible(p));
-      if (!pw) return;
-      const scope = pw.form || document;
-      const users = [...scope.querySelectorAll("input")].filter((i) => ["text", "email", "tel", ""].includes(i.type) && i.value && visible(i));
-      let user = users.find((i) => /username|email/.test(i.autocomplete || ""));
-      if (!user) for (const i of users) if (i.compareDocumentPosition(pw) & Node.DOCUMENT_POSITION_FOLLOWING) user = i;
-      // Sign-up forms with "confirm password" count too; a single password field is a login.
-      ask("offerSave", { url: location.origin, username: user?.value || "", password: pw.value }).catch(() => {});
+      const login = readTypedLogin();
+      if (!login) return;
+      ask("offerSave", { url: location.origin, username: login.username, password: login.password })
+        .then((r) => { if (r?.prompt) awaitLoginSuccess(login.pw); }).catch(() => {});
+    };
+    // Single-page apps (React/Next.js) log you in without reloading the page, so the on-load
+    // check never runs. Watch briefly: once the URL changes or the password box goes away or is
+    // cleared (change-password pages), it went through and it's time to ask. A failed login
+    // usually leaves all three alone: no prompt (use the badge's "Save the password typed here").
+    let watching = null;
+    const awaitLoginSuccess = (pw) => {
+      clearInterval(watching);
+      const startUrl = location.href;
+      const until = Date.now() + 20_000;
+      watching = setInterval(() => {
+        const done = location.href !== startUrl || !pw.isConnected || !visible(pw) || !pw.value;
+        if (!done && Date.now() < until) return;
+        clearInterval(watching);
+        if (done) setTimeout(maybeAskToSave, 400);     // let the next screen render first
+      }, 300);
     };
     document.addEventListener("submit", capture, true);
     document.addEventListener("click", (e) => {
@@ -603,7 +656,7 @@
   async function maybeAskToSave() {
     if (window.top !== window && !window.__LOCKBOX_TEST__) return;   // one prompt per tab: top frame only
     const p = await ask("pendingSave").catch(() => null);
-    if (!p) return;
+    if (!p || toast?.isConnected) return;
     const answer = (a) => trusted(async () => {
       toast?.remove(); toast = null;
       await ask("answerSave", { answer: a }).catch((err) => showToast([el("div", {}, err.message)], 4000));
@@ -611,7 +664,7 @@
     showToast([
       el("b", {}, p.update ? `Update saved password for ${p.host}?` : `Save login for ${p.host}?`),
       el("div", {}, p.username || "(no username)"),
-      p.locked ? el("div", { style: "color:#fbbf24;margin-top:4px" }, "Unlock Lockbox first, then press Save.") : null,
+      p.locked ? el("div", { style: "color:#eab308;margin-top:4px" }, "Unlock Lockbox first, then press Save.") : null,
       el("div", { class: "row" },
         el("button", { class: "btn primary", onclick: answer("save") }, p.update ? "Update" : "Save"),
         el("button", { class: "btn", onclick: answer("later") }, "Not now"),

@@ -93,7 +93,7 @@ function resumeCard() {
   const picker = h("input", { type: "file", accept: ".pdf,.doc,.docx", hidden: true });
   const status = h("div", { class: "row" });
   const drawStatus = () => status.replaceChildren(...(resume
-    ? [h("span", { class: "pill" }, `📄 ${resume.name} · ${Math.round(resume.size / 1024)} KB`),
+    ? [h("span", { class: "pill" }, `${resume.name} · ${Math.round(resume.size / 1024)} KB`),
        h("button", { class: "btn sm danger", type: "button", onclick: async () => { await send("resumeRemove"); resume = null; drawStatus(); } }, "Remove")]
     : [h("span", { class: "muted" }, "No resume uploaded yet.")]));
   const upload = async (f) => {

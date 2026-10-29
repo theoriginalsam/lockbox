@@ -54,6 +54,7 @@ export function fillProfileInPage(fields) {
     ["familyName", /^family-name$/, /last.?name|surname|family|lname/i],
     ["email", /^email$/, /e-?mail/i],
     ["phone", /^tel(-national)?$/, /phone|mobile|tel\b|cell/i],
+    ["dateOfBirth", /^bday$/, /birth|\bdob\b|bday/i],
     ["organization", /^organization$/, /company|organi[sz]ation|employer/i],
     ["address1", /^(address-line1|street-address)$/, /address.?(line)?.?1|street|addr1|^address$/i],
     ["address2", /^address-line2$/, /address.?(line)?.?2|apt|suite|unit|addr2/i],
@@ -86,12 +87,18 @@ export function fillProfileInPage(fields) {
   const inputs = [...document.querySelectorAll("input, select, textarea")].filter((el) =>
     visible(el) && !isLoginForm(el.form)
     && !["password", "hidden", "submit", "button", "checkbox", "radio", "file"].includes(el.type));
+  // Dates are stored as YYYY-MM-DD; date pickers take that, text boxes get the format they hint at.
+  const dateFor = (el, iso) => {
+    const [y, m, d] = iso.split("-");
+    if (!d || el.type === "date") return iso;
+    return /dd.?mm/i.test(labelOf(el)) ? `${d}/${m}/${y}` : `${m}/${d}/${y}`;
+  };
   for (const [key, auto, heuristic] of rules) {
     const value = fields[key];
     if (!value) continue;
     const el = inputs.find((e) => !used.has(e) && auto.test((e.autocomplete || "").replace(/^(shipping|billing) /, "")))
       || inputs.find((e) => !used.has(e) && !e.autocomplete?.match(/\w/) && heuristic.test(labelOf(e)));
-    if (el && setValue(el, value)) { used.add(el); filled++; }
+    if (el && setValue(el, key === "dateOfBirth" ? dateFor(el, value) : value)) { used.add(el); filled++; }
   }
   return { filled };
 }

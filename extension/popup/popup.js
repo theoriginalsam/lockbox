@@ -8,15 +8,48 @@ import { PROFILE_FIELDS } from "../src/vault.js";
 
 const app = document.getElementById("app");
 const toastEl = document.getElementById("toast");
-const ui = { tab: "login", query: "", state: null, items: [], matches: [] };
+// popup.html?page&q=example.com opens the same UI in a full tab, pre-searched for a site.
+const params = new URLSearchParams(location.search);
+const ui = { tab: "login", query: params.get("q") || "", state: null, items: [], matches: [] };
+if (params.has("page")) document.body.classList.add("page");
 
 const PROFILE_LABELS = {
-  givenName: "First name", familyName: "Last name", email: "Email", phone: "Phone",
+  givenName: "First name", familyName: "Last name", email: "Email", phone: "Phone", dateOfBirth: "Date of birth",
   organization: "Company", address1: "Address line 1", address2: "Address line 2", city: "City",
   state: "State / province", postalCode: "Postal code", country: "Country",
 };
 
 // ---------------------------------------------------------------- helpers
+
+/** Map a pasted JSON profile (flat Lockbox fields, or nested like basic_information/contact)
+ *  onto form-profile fields; everything else becomes readable notes. */
+function profileFromJSON(obj) {
+  const b = obj.basic_information || obj.contact || obj.personal || obj;
+  const pick = (...keys) => keys.map((k) => b[k]).find((v) => typeof v === "string" && v.trim()) || "";
+  const full = pick("full_name", "name", "fullName");
+  const loc = typeof b.location === "object" && b.location ? b.location : {};
+  const addr = typeof b.address === "object" && b.address ? b.address : {};
+  const fields = {
+    givenName: pick("givenName", "first_name", "firstName") || full.split(/\s+/)[0] || "",
+    familyName: pick("familyName", "last_name", "lastName") || (full.includes(" ") ? full.split(/\s+/).slice(-1)[0] : ""),
+    email: pick("email"), phone: pick("phone", "mobile"),
+    dateOfBirth: /^\d{4}-\d{2}-\d{2}$/.test(pick("dateOfBirth", "date_of_birth", "dob")) ? pick("dateOfBirth", "date_of_birth", "dob") : "",
+    organization: pick("organization", "company"),
+    address1: pick("address1") || addr.line1 || addr.street || (typeof b.address === "string" ? b.address : ""),
+    address2: pick("address2") || addr.line2 || "",
+    city: pick("city") || loc.city || addr.city || "",
+    state: pick("state") || loc.state || addr.state || "",
+    postalCode: pick("postalCode", "zip", "postal_code") || loc.postal_code || addr.zip || addr.postal_code || "",
+    country: pick("country") || loc.country || addr.country || "",
+  };
+  const label = (k) => k.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+  const line = (v) => Array.isArray(v) ? v.map(line).join(", ")
+    : v && typeof v === "object" ? Object.entries(v).filter(([, x]) => x != null && x !== "").map(([k, x]) => `${label(k)}: ${line(x)}`).join("; ")
+    : String(v);
+  const sections = Object.entries(obj).filter(([k]) => obj[k] !== b).map(([k, v]) =>
+    `${label(k).toUpperCase()}\n${Array.isArray(v) ? v.map((x) => `- ${line(x)}`).join("\n") : line(v)}`);
+  return { name: obj.name && typeof obj.name === "string" ? obj.name : "", fields, notes: sections.join("\n\n") };
+}
 
 function h(tag, props = {}, ...children) {
   const el = document.createElement(tag);
@@ -233,17 +266,22 @@ function viewMain() {
   const hasKey = ui.items.some((i) => i.type === "secret" && i.name === "openrouter");
   const toggle = (label, on, onClick, title) => h("button", { class: `tg${on ? " on" : ""}`, title, onclick: onClick },
     h("span", { class: "sw" }), label);
-  const aiBtn = toggle("✨ AI drafting", !!st.ai?.enabled && hasKey, async () => {
+  const aiBtn = toggle("AI drafting", !!st.ai?.enabled && hasKey, async () => {
     if (!hasKey) { render(viewSettings); toast("Add your OpenRouter key first"); return; }
     await send("settings", { patch: { ai: { enabled: !st.ai?.enabled } } });
     await boot();
   }, hasKey ? "Show “Draft with AI” on written-answer fields" : "Add your OpenRouter key in Settings");
-  const chromeBtn = toggle("Hide Chrome's prompts", st.quietChrome !== false, async () => {
+  const chromeBtn = toggle("Quiet Chrome", st.quietChrome !== false, async () => {
     const r = await send("settings", { patch: { quietChrome: st.quietChrome === false } });
     if (r.chromePrompts === "blocked") toast("Chrome won't let Lockbox change this setting", true);
     await boot();
   }, "Turn off Chrome's own “Save password?” and address autofill while Lockbox is unlocked");
-  wrap.append(h("div", { class: "toggles" }, aiBtn, chromeBtn));
+  const helperBtn = toggle("Badge", st.inlineHelper !== false, async () => {
+    await send("settings", { patch: { inlineHelper: st.inlineHelper === false } });
+    toast(st.inlineHelper === false ? "Badge on: refresh open pages" : "Badge off");
+    await boot();
+  }, "Show the Lockbox badge and menu when you tap form fields");
+  wrap.append(h("div", { class: "toggles" }, helperBtn, aiBtn, chromeBtn));
 
   const search = h("input", { type: "text", placeholder: "Search vault", value: ui.query, oninput: (e) => {
     ui.query = e.target.value;
@@ -288,10 +326,26 @@ function viewEdit(item) {
   } else {
     const grid = h("div", { class: "kv" });
     for (const f of PROFILE_FIELDS) {
-      inputs[`f_${f}`] = h("input", { type: f === "email" ? "email" : "text", value: item.fields?.[f] || "" });
+      const type = f === "email" ? "email" : f === "dateOfBirth" ? "date" : "text";
+      inputs[`f_${f}`] = h("input", { type, value: item.fields?.[f] || "" });
       grid.append(field(PROFILE_LABELS[f], inputs[`f_${f}`]));
     }
-    body.push(grid);
+    inputs.notes = h("textarea", { style: "min-height:120px", placeholder: "Anything else: education, documents, family…" }, item.notes || "");
+    // Paste a JSON file (e.g. a detailed personal profile) to fill the boxes above in one go.
+    const paste = h("textarea", { placeholder: "Paste JSON here", style: "min-height:70px" });
+    const apply = h("button", { class: "btn sm", type: "button" }, "Fill from JSON");
+    apply.addEventListener("click", () => {
+      let parsed;
+      try { parsed = JSON.parse(paste.value); } catch { return toast("That isn't valid JSON", true); }
+      const { name, fields, notes } = profileFromJSON(parsed);
+      for (const [f, v] of Object.entries(fields)) if (v) inputs[`f_${f}`].value = v;
+      if (notes) inputs.notes.value = notes;
+      if (!inputs.name.value) inputs.name.value = name || "Personal";
+      paste.value = "";
+      toast("Filled from JSON. Check it, then Save");
+    });
+    body.push(grid, field("Notes", inputs.notes),
+      h("details", { class: "import" }, h("summary", {}, "Import from JSON"), paste, apply));
   }
 
   const save = h("button", { class: "btn primary", type: "submit" }, isNew ? "Save" : "Save changes");
@@ -305,7 +359,10 @@ function viewEdit(item) {
     if (item.type === "login") Object.assign(next, { url: inputs.url.value, username: inputs.username.value,
       password: inputs.password.value, notes: inputs.notes.value });
     if (item.type === "note") next.text = inputs.text.value;
-    if (item.type === "profile") next.fields = Object.fromEntries(PROFILE_FIELDS.map((f) => [f, inputs[`f_${f}`].value]));
+    if (item.type === "profile") {
+      next.fields = Object.fromEntries(PROFILE_FIELDS.map((f) => [f, inputs[`f_${f}`].value]));
+      next.notes = inputs.notes.value;
+    }
     if (item.type === "login" && !next.url) throw new Error("Website is required for a login");
     await send("save", { item: next });
     toast("Saved");
@@ -361,6 +418,29 @@ function viewSettings() {
     const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
     h("a", { href: url, download: filename }).click();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }));
+  // Sites where you chose "Never here" on the save prompt; remove one to be asked again.
+  const never = s.neverSave || [];
+  const neverList = h("div", { class: "list" }, ...(never.length ? never.map((site) => {
+    const rm = h("button", { class: "btn sm", title: `Ask to save on ${site} again` }, "Remove");
+    rm.addEventListener("click", busy(rm, async () => {
+      await send("settings", { patch: { neverSave: never.filter((x) => x !== site) } });
+      await boot(viewSettings);
+    }));
+    return h("div", { class: "item", style: "cursor:default" }, h("div", { class: "avatar" }, site[0]),
+      h("div", { class: "meta" }, h("b", {}, site)), h("div", { class: "acts" }, rm));
+  }) : [h("p", { class: "hint" }, "None. Sites where you choose “Never here” on the save prompt appear here.")]));
+
+  const csvIn = h("input", { type: "file", accept: ".csv,text/csv", hidden: true });
+  const imp = h("button", { class: "btn sm" }, "Import passwords (CSV)");
+  imp.addEventListener("click", () => csvIn.click());
+  csvIn.addEventListener("change", busy(imp, async () => {
+    const file = csvIn.files[0];
+    csvIn.value = "";
+    if (!file) return;
+    const r = await send("importCsv", { text: await file.text() });
+    toast(`Imported ${r.added} of ${r.total}${r.same ? `, ${r.same} already saved` : ""}${r.kept ? `, ${r.kept} kept Lockbox's version` : ""}. Now delete the CSV file.`);
+    await boot(viewSettings);
   }));
   const wipe = h("button", { class: "btn sm danger" }, "Delete vault from this device");
   wipe.addEventListener("click", busy(wipe, async () => {
@@ -444,7 +524,7 @@ function viewSettings() {
     h("button", { class: "back", onclick: () => boot() }, "← Back"),
     h("h1", {}, "Settings"),
     h("h2", {}, "AI drafting (OpenRouter)"),
-    h("label", { class: "row", style: "gap:8px;cursor:pointer" }, aiOn, h("span", {}, "Show “✨ Draft with AI” on written-answer fields")),
+    h("label", { class: "row", style: "gap:8px;cursor:pointer" }, aiOn, h("span", {}, "Show “Draft with AI” on written-answer fields")),
     h("p", { class: "hint" }, "When you click it, your work profile, the question and the job page text go to the model below via OpenRouter. Tip: make a separate OpenRouter key for Lockbox with a credit limit."),
     field(keyItem ? "OpenRouter API key (saved, encrypted)" : "OpenRouter API key", keyIn.wrap),
     field("Model (e.g. openrouter/auto, or pick from the list)", model), models, aiSave,
@@ -459,6 +539,10 @@ function viewSettings() {
     h("label", { class: "row", style: "gap:8px;cursor:pointer" }, inline, h("span", {}, "Show the Lockbox badge and menu when I tap form fields")),
     h("h2", {}, "Lock"), h("div", { class: "row" }, h("span", {}, "Ask for master password"), minutes, saveLock),
     h("h2", {}, "Sync"), syncBox,
+    h("h2", {}, "Never save on"), neverList,
+    h("h2", {}, "Import passwords"),
+    h("p", { class: "hint" }, "Chrome: open chrome://password-manager/settings → Export passwords. Apple Passwords app: File → Export All Passwords. Then choose the CSV here. The CSV is not encrypted: delete it (and empty the Bin) once imported."),
+    h("div", { class: "row" }, imp, csvIn),
     h("h2", {}, "Backup"), h("p", { class: "hint" }, "The backup file is encrypted; you need your master password to use it."),
     h("div", { class: "row" }, exp),
     h("h2", {}, "Danger zone"), h("div", { class: "row" }, wipe));
@@ -496,4 +580,9 @@ async function boot(view) {
 
 document.getElementById("btn-lock").addEventListener("click", async () => { await send("lock"); await boot(); });
 document.getElementById("btn-settings").addEventListener("click", () => render(viewSettings));
+document.getElementById("btn-full").addEventListener("click", () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL("popup/popup.html?page") });
+  window.close();
+});
+document.getElementById("btn-full").hidden = params.has("page");
 boot();

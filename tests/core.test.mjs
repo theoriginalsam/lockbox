@@ -99,3 +99,16 @@ test("password strength labels", () => {
   assert.equal(passwordStrength("abc").label, "too weak");
   assert.equal(passwordStrength("Tr0ub4dor&3-and-more-words").label, "strong");
 });
+
+test("imports Chrome and Apple Passwords CSV exports", async () => {
+  const { parsePasswordCsv } = await import("../extension/src/vault.js");
+  const chromeCsv = "name,url,username,password,note\r\nexample.test,https://example.test/login,alex,\"p,a\"\"ss\",\r\napp,android://xyz@com.app,u,p,\r\n";
+  const rows = parsePasswordCsv(chromeCsv);
+  assert.equal(rows.length, 1, "android app entries are skipped");
+  assert.deepEqual(rows[0], { name: "example.test", url: "https://example.test/login", username: "alex", password: 'p,a"ss', notes: "" });
+  const apple = "Title,URL,Username,Password,Notes,OTPAuth\nShop,https://shop.test/,bo@x.test,s3cret,\"line1\nline2\",\n";
+  const a = parsePasswordCsv(apple);
+  assert.equal(a[0].name, "Shop");
+  assert.equal(a[0].notes, "line1\nline2");
+  assert.deepEqual(parsePasswordCsv("hello,world\n1,2"), [], "not a password export");
+});

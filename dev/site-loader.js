@@ -5,6 +5,7 @@
   const popupWin = () => window.parent.document.getElementById("popup").contentWindow;
   window.chrome = {
     runtime: {
+      id: "lockbox-dev",
       sendMessage: (msg) => new Promise((resolve) => {
         const sender = { id: "lockbox-dev", tab: { id: 1, url: location.href }, url: location.href, frameId: 0 };
         for (const fn of popupWin().__lockboxDev.listeners.message) if (fn(msg, sender, resolve) === true) return;

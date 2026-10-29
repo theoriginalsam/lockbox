@@ -5,15 +5,15 @@ import { normalizeProfile } from "./jobfields.js";
 // item = { id, type: "login" | "note" | "profile" | "job" | "quick", name, updatedAt, deleted?,
 //          login:   url, username, password, notes
 //          note:    text
-//          profile: fields { givenName, familyName, email, phone, address1, address2, city,
-//                            state, postalCode, country, organization }
+//          profile: fields { givenName, familyName, email, phone, dateOfBirth (YYYY-MM-DD), address1,
+//                            address2, city, state, postalCode, country, organization }, notes
 //          job:     profile (work profile, Nightshift profile.yaml schema; see jobfields.js)
 //          quick:   password (a password you reuse, offered on password fields of new sites)
 //          secret:  password (an API key Lockbox uses for you, e.g. name "openrouter") }
 // Deletes are tombstones so a delete on one device survives syncing with another.
 
 export const PROFILE_FIELDS = [
-  "givenName", "familyName", "email", "phone", "organization",
+  "givenName", "familyName", "email", "phone", "dateOfBirth", "organization",
   "address1", "address2", "city", "state", "postalCode", "country",
 ];
 
@@ -80,7 +80,7 @@ function sanitize(item) {
   }
   const fields = {};
   for (const f of PROFILE_FIELDS) fields[f] = String(item.fields?.[f] || "").trim();
-  return { ...base, name: base.name || "Profile", fields };
+  return { ...base, name: base.name || "Profile", fields, notes: String(item.notes || "") };
 }
 
 // ---------------------------------------------------------------- site matching
@@ -132,4 +132,47 @@ export function searchItems(vault, query) {
   if (!q) return items;
   return items.filter((i) => [i.name, i.url, i.username, i.text, ...Object.values(i.fields || {})]
     .some((v) => String(v || "").toLowerCase().includes(q)));
+}
+
+// ---------------------------------------------------------------- password CSV import
+
+/** RFC 4180-ish CSV: quoted fields, "" escapes, commas and newlines inside quotes. */
+export function parseCsv(text) {
+  const rows = [];
+  let row = [], cell = "", quoted = false;
+  const src = String(text).replace(/^\uFEFF/, "");
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (quoted) {
+      if (c === '"' && src[i + 1] === '"') { cell += '"'; i++; }
+      else if (c === '"') quoted = false;
+      else cell += c;
+    } else if (c === '"') quoted = true;
+    else if (c === ",") { row.push(cell); cell = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && src[i + 1] === "\n") i++;
+      row.push(cell); rows.push(row); row = []; cell = "";
+    } else cell += c;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter((r) => r.some((x) => x.trim()));
+}
+
+/** Chrome (name,url,username,password,note), Apple Passwords/Safari (Title,URL,Username,Password,
+ *  Notes,OTPAuth) and Firefox (url,username,password,...) exports -> login items. */
+export function parsePasswordCsv(text) {
+  const [head, ...body] = parseCsv(text);
+  if (!head) return [];
+  const col = (...names) => head.findIndex((h) => names.includes(h.trim().toLowerCase()));
+  const c = { name: col("name", "title"), url: col("url", "website", "login_uri"), user: col("username", "login", "login_username"),
+    pw: col("password", "login_password"), note: col("note", "notes") };
+  if (c.url < 0 || c.pw < 0) return [];
+  return body.map((r) => ({
+    name: (c.name >= 0 && r[c.name]) || safeHostOf(r[c.url]), url: r[c.url] || "",
+    username: c.user >= 0 ? r[c.user] || "" : "", password: r[c.pw] || "", notes: c.note >= 0 ? r[c.note] || "" : "",
+  })).filter((x) => x.password && /^https?:\/\//i.test(x.url));   // skips android:// app entries
+}
+
+function safeHostOf(url) {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return String(url || "Login"); }
 }

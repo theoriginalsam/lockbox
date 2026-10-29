@@ -12,7 +12,7 @@ import {
 import { DEFAULT_MODEL, draftAnswer } from "./ai.js";
 import { classify, emptyProfile, normalizeProfile, profileFacts, suggest } from "./jobfields.js";
 import * as sync from "./sync.js";
-import { deleteItem, emptyVault, liveItems, matchesSite, mergeVaults, upsertItem } from "./vault.js";
+import { deleteItem, emptyVault, liveItems, matchesSite, mergeVaults, parsePasswordCsv, upsertItem } from "./vault.js";
 
 const LOCAL_KEY = "lockbox";
 const SESSION_KEY = "lockboxSession";
@@ -371,6 +371,23 @@ const handlers = {
     return chrome.tabs.sendMessage(tab.id, { type: "lockbox:fillAll" });
   },
 
+  /** Passwords exported from Chrome, Apple Passwords/Safari or Firefox as CSV. */
+  async importCsv({ text }) {
+    const ctx = await unlocked();
+    const rows = parsePasswordCsv(text);
+    if (!rows.length) throw new Error("No passwords found. Is this the CSV file Chrome or Apple Passwords exported?");
+    let vault = ctx.vault, added = 0, same = 0, kept = 0;
+    for (const r of rows) {
+      const live = liveItems(vault).filter((i) => i.type === "login" && matchesSite(i, r.url) && i.username === r.username);
+      if (live.some((i) => i.password === r.password)) { same++; continue; }
+      if (live.length) { kept++; continue; }        // Lockbox already has a (newer) password for it
+      vault = upsertItem(vault, { type: "login", ...r }).vault;
+      added++;
+    }
+    if (added) await persist(ctx, vault);
+    return { added, same, kept, total: rows.length };
+  },
+
   async exportBackup() {
     const { local } = await unlocked();
     return { filename: `lockbox-backup-${new Date().toISOString().slice(0, 10)}.json`, data: local.sealed };
@@ -496,6 +513,10 @@ const contentHandlers = {
     if (!local || !password || !host || local.settings.neverSave.includes(host)) return { prompt: false };
     const ctx = await unlocked().catch(() => null);
     if (ctx) {
+      // Reset/change-password pages rarely show the username: if this site has exactly one saved
+      // login, the new password belongs to it.
+      const forSite = liveItems(ctx.vault).filter((i) => i.type === "login" && matchesSite(i, url));
+      if (!username && forSite.length === 1) username = forSite[0].username;
       const same = liveItems(ctx.vault).find((i) => matchesSite(i, url) && i.username === username);
       if (same && same.password === password) return { prompt: false };
     }
@@ -511,6 +532,13 @@ const contentHandlers = {
     const p = pending[sender.tab.id];
     if (!p || Date.now() - p.at > 5 * 60_000) return null;
     return { host: safeHost(p.url), username: p.username, update: p.update, locked: !(await getSession()) };
+  },
+
+  /** "Edit saved logins" from the in-page menu: the vault in a tab, searched for this site. */
+  async openManager(_msg, sender) {
+    const q = safeHost(sender.url) || "";
+    await chrome.tabs.create({ url: chrome.runtime.getURL(`popup/popup.html?page&q=${encodeURIComponent(q)}`) });
+    return { ok: true };
   },
 
   async answerSave({ answer }, sender) {
