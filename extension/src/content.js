@@ -678,6 +678,9 @@
     const field = e.target;
     if (!isFillable(field) || host?.contains(field)) return;
     if (field.type === "search") return;
+    // Chat and comment boxes (a free-standing textarea, not in a form) aren't form fields to fill.
+    // Textareas still get the badge inside forms and on job applications (cover letters, answers).
+    if (field.tagName === "TEXTAREA" && !field.form && !looksLikeApplication()) return;
     activeField = field;
     if (!status) await refreshStatus();
     if (!status?.setup || status.inline === false) return;
