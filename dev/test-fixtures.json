@@ -24,7 +24,8 @@
       "location": "Austin, TX",
       "linkedin": "https://linkedin.com/in/test-candidate",
       "github": "https://github.com/test-candidate",
-      "website": ""
+      "website": "",
+      "date_of_birth": "1998-03-15"
     },
     "headline": "ML Engineer",
     "summary": "Fake summary for testing.",

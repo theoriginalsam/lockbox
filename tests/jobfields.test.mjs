@@ -85,3 +85,28 @@ test("tap-a-field suggestions rank the classifier's pick first and include job d
   assert.ok(facts.some((x) => x.label.startsWith("Job 1") && x.label.endsWith("description")));
   assert.ok(facts.some((x) => x.label === "Answer · why do you want"));
 });
+
+test("computed answers: age, date of birth in the field's format, 18+, age ranges, today", async () => {
+  const { ageOn, formatForField, rangeOption } = await import("../extension/src/jobfields.js");
+  const now = new Date(2026, 9, 28);
+  assert.equal(ageOn("1999-11-02", now), 26, "birthday not reached yet this year");
+  assert.equal(ageOn("1999-10-28", now), 27, "birthday today");
+  assert.equal(ageOn("", now), null);
+
+  const p = normalizeProfile({ contact: { name: "A B", date_of_birth: "1999-10-28" } });
+  const age = Number(classify(f("Age"), p).value);
+  assert.ok(age >= 26, "age computed from date of birth");
+  assert.equal(classify(f("Date of Birth", { type: "date" }), p).value, "1999-10-28");
+  assert.equal(classify(f("Date of birth", { placeholder: "MM/DD/YYYY" }), p).value, "10/28/1999");
+  assert.equal(classify(f("Birth date (DD/MM/YYYY)"), p).value, "28/10/1999");
+  assert.equal(classify({ label: "Are you at least 18 years of age?", type: "select", options: ["Yes", "No"] }, p).value, "Yes");
+  assert.equal(rangeOption(["Under 18", "18-24", "25 - 34", "35+"], 27), "25 - 34");
+  assert.equal(rangeOption(["Under 18", "18-24", "25-34", "35 or older"], 40), "35 or older");
+  assert.match(classify(f("Today's date", { type: "date" }), p).value, /^\d{4}-\d{2}-\d{2}$/);
+
+  const noDob = normalizeProfile({ contact: { name: "A B" } });
+  assert.equal(classify(f("Age"), noDob), null, "no date of birth -> never guess an age");
+  assert.equal(classify(f("Referrer's date of birth"), p), null, "someone else's birthday is left alone");
+  assert.equal(classify(f("Preferred language"), p)?.key, undefined, "'language' must not match 'age'");
+  assert.equal(formatForField(null, {}), "");
+});

@@ -122,6 +122,7 @@ function contactCard() {
   const c = profile.contact;
   return card("Contact", null, h("div", { class: "grid" },
     input("Full name", c, "name"), input("Email", c, "email", { type: "email" }), input("Phone", c, "phone", { type: "tel" }),
+    input("Date of birth (for age questions)", c, "date_of_birth", { type: "date" }),
     input("Location (City, State)", c, "location"), input("City", c, "city"), input("State / province", c, "state"),
     input("Country", c, "country"), input("Postal code", c, "postal_code"), input("Street address", c, "address"),
     input("LinkedIn URL", c, "linkedin", { type: "url" }), input("GitHub URL", c, "github", { type: "url" }),

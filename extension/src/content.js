@@ -135,15 +135,17 @@
   const CSS_TEXT = `
     :host { all: initial; }
     * { box-sizing: border-box; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
-    .badge { position: fixed; width: 22px; height: 22px; border-radius: 6px; border: 0; cursor: pointer; padding: 0;
-      background: linear-gradient(135deg,#2f6fed,#8b5cf6); box-shadow: 0 1px 4px rgba(0,0,0,.25); z-index: 2147483647; }
-    .badge::after { content: ""; position: absolute; left: 7px; top: 5px; width: 8px; height: 10px; border: 2px solid #fff;
-      border-top-width: 4px; border-radius: 2px 2px 3px 3px; }
+    .badge { position: fixed; width: 22px; height: 22px; display: grid; place-items: center; padding: 0; cursor: pointer;
+      border-radius: 6px; border: 1px solid rgba(15,20,30,.14); background: #fff; color: #2f6fed;
+      box-shadow: 0 1px 2px rgba(15,20,30,.08); transition: background .12s, border-color .12s; z-index: 2147483647; }
+    .badge:hover, .badge:focus-visible { background: #eef3ff; border-color: #2f6fed; outline: none; }
+    .badge svg { width: 13px; height: 13px; display: block; }
     .menu { position: fixed; width: 340px; max-height: 360px; display: flex; flex-direction: column; background: #fff; color: #111418;
       border: 1px solid #dfe3ea; border-radius: 12px; box-shadow: 0 12px 32px rgba(15,20,30,.22); z-index: 2147483647; overflow: hidden; font-size: 13px; }
     .head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid #eef0f4; font-weight: 700; }
     .head small { font-weight: 500; color: #6b7280; margin-left: auto; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .dot { width: 14px; height: 14px; border-radius: 4px; background: linear-gradient(135deg,#2f6fed,#8b5cf6); flex: none; }
+    .dot { width: 16px; height: 16px; display: grid; place-items: center; color: #2f6fed; flex: none; }
+    .dot svg { width: 14px; height: 14px; display: block; }
     input.search { margin: 8px 10px 4px; padding: 7px 9px; border: 1px solid #dfe3ea; border-radius: 8px; font-size: 13px; outline: none; }
     input.search:focus { border-color: #2f6fed; }
     .list { overflow: auto; padding: 4px; }
@@ -169,12 +171,14 @@
     .fab { position: fixed; right: 18px; bottom: 18px; height: 40px; padding: 0 16px 0 12px; border-radius: 999px; border: 0; cursor: pointer;
       background: #2f6fed; color: #fff; font-weight: 700; font-size: 13px; box-shadow: 0 8px 24px rgba(47,111,237,.45); z-index: 2147483646;
       display: flex; align-items: center; gap: 8px; }
-    .fab .dot { background: #fff; }
-    @media (prefers-color-scheme: dark) {
-      .menu { background: #1d2027; color: #eef0f4; border-color: #2f343e; }
-      .head, .foot { border-color: #2f343e; } .opt b { color: #9aa1ad; } .opt:hover, .opt.sel { background: #262f45; }
-      input.search { background: #15171c; color: #eef0f4; border-color: #2f343e; }
-      .btn { background: #262a33; color: #eef0f4; border-color: #2f343e; } .note { color: #c3c7cf; }
+    .fab .dot { color: #fff; }
+    :host([data-theme="dark"]) .badge { background: #1d2027; border-color: #3a404c; color: #8fb0ff; }
+    :host([data-theme="dark"]) .badge:hover, :host([data-theme="dark"]) .badge:focus-visible { background: #262f45; border-color: #8fb0ff; }
+    :host([data-theme="dark"]) .dot { color: #8fb0ff; }
+    :host([data-theme="dark"]) .menu { background: #1d2027; color: #eef0f4; border-color: #2f343e; }
+    :host([data-theme="dark"]) .head, :host([data-theme="dark"]) .foot { border-color: #2f343e; } .opt b { color: #9aa1ad; } .opt:hover, .opt.sel { background: #262f45; }
+    :host([data-theme="dark"]) input.search { background: #15171c; color: #eef0f4; border-color: #2f343e; }
+    :host([data-theme="dark"]) .btn { background: #262a33; color: #eef0f4; border-color: #2f343e; } .note { color: #c3c7cf; }
     }`;
 
   function ensureShell() {
@@ -204,6 +208,24 @@
     return node;
   }
 
+  /** Line-art padlock (SVG built with DOM APIs, no innerHTML). */
+  function lockIcon() {
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(NS, "svg");
+    for (const [k, v] of Object.entries({ viewBox: "0 0 24 24", fill: "none", stroke: "currentColor",
+      "stroke-width": "2.2", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true" })) svg.setAttribute(k, v);
+    const rect = document.createElementNS(NS, "rect");
+    for (const [k, v] of Object.entries({ x: "5", y: "11", width: "14", height: "10", rx: "2.5" })) rect.setAttribute(k, v);
+    const path = document.createElementNS(NS, "path");
+    path.setAttribute("d", "M8.5 11V7.5a3.5 3.5 0 0 1 7 0V11");
+    svg.append(rect, path);
+    return svg;
+  }
+
+  function dot() {
+    return el("span", { class: "dot" }, lockIcon());
+  }
+
   function trusted(handler) {
     return (e) => {
       if (!e.isTrusted) return;          // ignore clicks synthesised by the page
@@ -219,6 +241,20 @@
   }
 
   // ---------------------------------------------------------------- badge + menu
+
+  /** Match the website, not the OS: dark UI only when the field itself sits on a dark background. */
+  function themeFor(field) {
+    let node = field;
+    while (node && node.nodeType === 1) {
+      const m = getComputedStyle(node).backgroundColor.match(/rgba?\(([\d.]+), ([\d.]+), ([\d.]+)(?:, ([\d.]+))?/);
+      if (m && (m[4] === undefined || Number(m[4]) > 0.5)) {
+        const lum = (0.2126 * m[1] + 0.7152 * m[2] + 0.0722 * m[3]) / 255;
+        return lum < 0.45 ? "dark" : "light";
+      }
+      node = node.parentElement;
+    }
+    return "light";
+  }
 
   function placeNear(node, field, { below = false } = {}) {
     const r = field.getBoundingClientRect();
@@ -246,9 +282,10 @@
   function showBadge(field) {
     ensureShell();
     hideBadge();
+    host.setAttribute("data-theme", themeFor(field));
     badge = el("button", { class: "badge", title: "Lockbox: fill this field", "aria-label": "Lockbox",
       onmousedown: (e) => e.preventDefault(),        // keep focus in the field
-      onclick: trusted(() => (menu ? closeMenu() : openMenu(field))) });
+      onclick: trusted(() => (menu ? closeMenu() : openMenu(field))) }, lockIcon());
     root.append(badge);
     placeNear(badge, field);
   }
@@ -258,7 +295,7 @@
     closeMenu();
     const desc = describe(field);
     menu = el("div", { class: "menu", role: "listbox", onmousedown: (e) => e.preventDefault() },
-      el("div", { class: "head" }, el("span", { class: "dot" }), "Lockbox", el("small", {}, location.hostname)),
+      el("div", { class: "head" }, dot(), "Lockbox", el("small", {}, location.hostname)),
       el("div", { class: "note" }, "Loading…"));
     root.append(menu);
     placeNear(menu, field, { below: true });
@@ -490,7 +527,7 @@
         } finally {
           fab.disabled = false;
         }
-      }) }, el("span", { class: "dot" }), "Fill application");
+      }) }, dot(), "Fill application");
     root.append(fab);
   }
 

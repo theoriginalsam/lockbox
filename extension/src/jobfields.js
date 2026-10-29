@@ -15,7 +15,7 @@ const SOMEONE_ELSE = /referr|referral|emergency|reference|manager|supervisor|rec
 export function emptyProfile() {
   return {
     contact: { name: "", email: "", phone: "", location: "", linkedin: "", github: "", website: "",
-      city: "", state: "", country: "", postal_code: "", address: "" },
+      city: "", state: "", country: "", postal_code: "", address: "", date_of_birth: "" },
     headline: "", summary: "",
     experience: [], projects: [], education: [], skills: [], certifications: [],
     answers: {
@@ -96,6 +96,51 @@ function year(s) {
   return (String(s || "").match(/\d{4}/) || [""])[0];
 }
 
+// ---------------------------------------------------------------- computed answers (always fresh)
+
+export function parseDate(s) {
+  const t = String(s || "").trim();
+  let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  m = t.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);       // MM/DD/YYYY
+  if (m) return new Date(Number(m[3]), Number(m[1]) - 1, Number(m[2]));
+  return null;
+}
+
+export function ageOn(dob, now = new Date()) {
+  const d = parseDate(dob);
+  if (!d || d > now) return null;
+  let age = now.getFullYear() - d.getFullYear();
+  if (now.getMonth() < d.getMonth() || (now.getMonth() === d.getMonth() && now.getDate() < d.getDate())) age--;
+  return age;
+}
+
+/** Format a date the way this particular field expects it. */
+export function formatForField(date, field) {
+  if (!date) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  const y = date.getFullYear(), mo = pad(date.getMonth() + 1), d = pad(date.getDate());
+  if (field.type === "date") return `${y}-${mo}-${d}`;
+  const hint = `${field.placeholder} ${field.label}`.toLowerCase();
+  if (/dd[/.-]mm[/.-]yy/.test(hint)) return `${d}/${mo}/${y}`;
+  if (/yyyy[/.-]mm[/.-]dd/.test(hint)) return `${y}-${mo}-${d}`;
+  return `${mo}/${d}/${y}`;                                       // US default
+}
+
+/** For "age range" drop-downs: the option whose numbers bracket the age (e.g. "25-34", "55+"). */
+export function rangeOption(options, age) {
+  for (const o of options || []) {
+    const t = String(o).toLowerCase();
+    let m = t.match(/(\d{2})\s*(?:-|–|to)\s*(\d{2})/);
+    if (m && age >= Number(m[1]) && age <= Number(m[2])) return o;
+    m = t.match(/(\d{2})\s*(?:\+|or (?:older|over|above)|and (?:older|over|above))/);
+    if (m && age >= Number(m[1])) return o;
+    m = t.match(/(?:under|below|less than)\s*(\d{2})/);
+    if (m && age < Number(m[1])) return o;
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------- rules
 
 const cur = (p) => p.experience[0] || {};
@@ -104,6 +149,11 @@ const edu = (p) => p.education[0] || {};
 // [key, human label, test on the field's combined text, value(profile)]
 // Ordered most-specific first; the first rule that matches and has a value wins.
 const RULES = [
+  ["adult", "18 or older", /at least 18|18 years (of age|or older)|over (the age of )?18|of legal (working )?age|18\+/,
+    (p) => { const a = ageOn(p.contact.date_of_birth); return a == null ? "" : a >= 18 ? "Yes" : "No"; }],
+  ["dob", "Date of birth", /date of birth|birth.?date|\bdob\b|birthday|born on/, (p, f) => formatForField(parseDate(p.contact.date_of_birth), f), "person"],
+  ["age", "Age", /\bage\b|how old/, (p) => { const a = ageOn(p.contact.date_of_birth); return a == null ? "" : String(a); }, "person"],
+  ["today", "Today's date", /today.?s date|^date$|date signed|signature date|current date/, (_p, f) => formatForField(new Date(), f)],
   ["preferredName", "Preferred name", /preferred (first )?name|nickname/, (p) => names(p).first, "person"],
   ["firstName", "First name", /first.?name|given.?name|\bfname\b|forename/, (p) => names(p).first, "person"],
   ["lastName", "Last name", /last.?name|family.?name|surname|\blname\b/, (p) => names(p).last, "person"],
@@ -204,7 +254,7 @@ export function classify(field, profile) {
   const auto = AUTOCOMPLETE[String(field.autocomplete || "").replace(/^(section-\S+ )?(shipping |billing )?/, "")];
   if (auto && !SOMEONE_ELSE.test(text)) {
     const [, lbl, , fn] = RULE_BY_KEY[auto];
-    const r = finish(auto, lbl, fn(profile));
+    const r = finish(auto, lbl, fn(profile, field));
     if (r) return r;
   }
   if (field.type === "email" && !SOMEONE_ELSE.test(text)) return finish("email", "Email", profile.contact.email);
@@ -212,7 +262,12 @@ export function classify(field, profile) {
   for (const [key, lbl, test, fn, scope] of RULES) {
     if (!test.test(text)) continue;
     if (scope === "person" && SOMEONE_ELSE.test(text)) return null;
-    const r = finish(key, lbl, fn(profile));
+    const value = fn(profile, field);
+    if (key === "age" && choice && value) {                          // "25-34" style drop-downs
+      const opt = rangeOption(field.options, Number(value));
+      if (opt) return { key, label: lbl, value: opt };
+    }
+    const r = finish(key, lbl, value);
     if (r) return r;
   }
   return null;
@@ -224,7 +279,7 @@ export function classify(field, profile) {
 export function profileFacts(profile) {
   const facts = [];
   const add = (label, value) => { if (value) facts.push({ label, value: String(value) }); };
-  for (const [key, lbl, , fn] of RULES) add(lbl, fn(profile));
+  for (const [, lbl, , fn] of RULES) add(lbl, fn(profile, { type: "text", label: "", placeholder: "" }));
   profile.experience.forEach((e, i) => {
     const n = `Job ${i + 1} · ${e.company}`;
     add(`${n} · title`, e.title); add(`${n} · company`, e.company); add(`${n} · location`, e.location);
