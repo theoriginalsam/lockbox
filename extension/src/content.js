@@ -315,7 +315,7 @@
       return renderNote(err.message);
     }
     if (!menu) return;
-    if (!data || data.locked) renderNote("Lockbox is locked. Click the Lockbox icon in the toolbar to unlock, then tap the field again.");
+    if (!data || data.locked) renderNote("🔒 Lockbox is locked. Click the Lockbox icon in your toolbar, unlock with your master password, then tap this field again.");
     else if (data.kind === "login") renderLogin(field, data);
     else if (data.empty) renderNote("Add your work profile in Lockbox (toolbar icon → Work profile) to fill job applications.");
     else renderJob(field, data);
@@ -629,7 +629,7 @@
     const formish = !!field.form || !!labelFor(field);
     const relevant = field.type === "password"
       || (status.unlocked && (status.siteLogins > 0 || (status.hasProfile && (application || formish))))
-      || (!status.unlocked && application);
+      || (!status.unlocked && (application || formish));      // locked: still show the badge, menu says "unlock"
     if (!relevant || activeField !== field) return;
     showBadge(field);
     if (status.unlocked && field.type !== "password" && application && status.hasProfile && !field.value) openMenu(field);
@@ -672,6 +672,7 @@
   });
 
   chrome.storage?.onChanged?.addListener(() => { status = null; });
+  addEventListener("focus", () => { status = null; });                 // e.g. you just unlocked in the popup
 
   watchLogins();
   maybeAskToSave();
