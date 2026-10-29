@@ -184,9 +184,12 @@
     :host([data-theme="dark"]) .ai { background: #1f2a44; border-color: #3a4f86; color: #9bb8ff; }
     :host([data-theme="dark"]) .draft { border-color: #2f343e; }
     :host([data-theme="dark"]) .menu { background: #1d2027; color: #eef0f4; border-color: #2f343e; }
-    :host([data-theme="dark"]) .head, :host([data-theme="dark"]) .foot { border-color: #2f343e; } .opt b { color: #9aa1ad; } .opt:hover, .opt.sel { background: #262f45; }
+    :host([data-theme="dark"]) .head, :host([data-theme="dark"]) .foot { border-color: #2f343e; }
+    :host([data-theme="dark"]) .opt b { color: #9aa1ad; }
+    :host([data-theme="dark"]) .opt:hover, :host([data-theme="dark"]) .opt.sel { background: #262f45; }
     :host([data-theme="dark"]) input.search { background: #15171c; color: #eef0f4; border-color: #2f343e; }
-    :host([data-theme="dark"]) .btn { background: #262a33; color: #eef0f4; border-color: #2f343e; } .note { color: #c3c7cf; }
+    :host([data-theme="dark"]) .btn { background: #262a33; color: #eef0f4; border-color: #2f343e; }
+    :host([data-theme="dark"]) .note { color: #c3c7cf; }
     }`;
 
   function ensureShell() {
