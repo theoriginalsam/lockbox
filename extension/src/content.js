@@ -626,7 +626,10 @@
     if (!status) await refreshStatus();
     if (!status?.setup || status.inline === false) return;
     const application = looksLikeApplication();
-    const formish = !!field.form || !!labelFor(field);
+    // Any real input counts: many sites have no <form> and label fields only with a placeholder
+    // or aria-label. (Search boxes were already excluded above.)
+    const formish = !!(field.form || labelFor(field) || field.placeholder || field.getAttribute("aria-label")
+      || field.name || field.id || field.tagName === "TEXTAREA");
     const relevant = field.type === "password"
       || (status.unlocked && (status.siteLogins > 0 || (status.hasProfile && (application || formish))))
       || (!status.unlocked && (application || formish));      // locked: still show the badge, menu says "unlock"
@@ -663,6 +666,10 @@
   addEventListener("resize", () => closeMenu());
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type === "lockbox:ping") {          // popup self-check: "is the page helper alive here?"
+      if (window.top === window || window.__LOCKBOX_TEST__) sendResponse({ ok: true, fields: document.querySelectorAll("input, textarea, select").length });
+      return false;
+    }
     if (msg?.type !== "lockbox:fillAll") return false;
     // Every frame hears this; only a frame that actually holds form fields answers, so an
     // application embedded in an iframe (e.g. Greenhouse on a company site) still gets filled.

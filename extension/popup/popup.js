@@ -215,6 +215,36 @@ function viewMain() {
   jobRow.append(h("button", { class: "btn", onclick: () => chrome.tabs.create({ url: chrome.runtime.getURL("profile/profile.html") }) }, "Work profile"));
   wrap.append(jobRow);
 
+  // Self-check: is the page helper running on this tab?
+  const helperNote = h("div");
+  if (host) send("pageHelper").then((r) => {
+    if (r.status !== "missing") return;
+    const refresh = h("button", { class: "btn sm primary" }, "Refresh page");
+    refresh.addEventListener("click", busy(refresh, async () => { await send("refreshTab"); window.close(); }));
+    helperNote.replaceChildren(h("div", { class: "warn-box" },
+      h("b", {}, "Lockbox isn't active on this page yet. "),
+      "Refresh it (needed after installing or reloading Lockbox). If it still doesn't appear: chrome://extensions → Lockbox → Details → Site access → “On all sites”.",
+      h("div", { style: "margin-top:8px" }, refresh)));
+  }).catch(() => {});
+  wrap.append(helperNote);
+
+  // One-tap switches on the front page.
+  const st = ui.state.settings;
+  const hasKey = ui.items.some((i) => i.type === "secret" && i.name === "openrouter");
+  const toggle = (label, on, onClick, title) => h("button", { class: `tg${on ? " on" : ""}`, title, onclick: onClick },
+    h("span", { class: "sw" }), label);
+  const aiBtn = toggle("✨ AI drafting", !!st.ai?.enabled && hasKey, async () => {
+    if (!hasKey) { render(viewSettings); toast("Add your OpenRouter key first"); return; }
+    await send("settings", { patch: { ai: { enabled: !st.ai?.enabled } } });
+    await boot();
+  }, hasKey ? "Show “Draft with AI” on written-answer fields" : "Add your OpenRouter key in Settings");
+  const chromeBtn = toggle("Hide Chrome's prompts", st.quietChrome !== false, async () => {
+    const r = await send("settings", { patch: { quietChrome: st.quietChrome === false } });
+    if (r.chromePrompts === "blocked") toast("Chrome won't let Lockbox change this setting", true);
+    await boot();
+  }, "Turn off Chrome's own “Save password?” and address autofill while Lockbox is unlocked");
+  wrap.append(h("div", { class: "toggles" }, aiBtn, chromeBtn));
+
   const search = h("input", { type: "text", placeholder: "Search vault", value: ui.query, oninput: (e) => {
     ui.query = e.target.value;
     drawList();
@@ -292,7 +322,10 @@ function viewEdit(item) {
 
 function viewSettings() {
   const s = ui.state.settings;
-  const minutes = h("input", { type: "number", min: 1, max: 240, value: s.autoLockMinutes });
+  const minutes = h("select", { style: "width:auto" },
+    [[0, "When I quit Chrome"], [15, "After 15 min idle"], [30, "After 30 min idle"], [60, "After 1 hour idle"], [240, "After 4 hours idle"]]
+      .map(([v, label]) => h("option", { value: String(v) }, label)));
+  minutes.value = String(s.autoLockMinutes ?? 0);
   const saveLock = h("button", { class: "btn sm" }, "Save");
   saveLock.addEventListener("click", busy(saveLock, async () => {
     await send("settings", { patch: { autoLockMinutes: minutes.value } });
@@ -424,7 +457,7 @@ function viewSettings() {
     quickList, field("Label", qName), field("Password", qPw.wrap), qAdd,
     h("h2", {}, "In-page helper"),
     h("label", { class: "row", style: "gap:8px;cursor:pointer" }, inline, h("span", {}, "Show the Lockbox badge and menu when I tap form fields")),
-    h("h2", {}, "Auto-lock"), h("div", { class: "row" }, h("span", {}, "Lock after (minutes)"), minutes, saveLock),
+    h("h2", {}, "Lock"), h("div", { class: "row" }, h("span", {}, "Ask for master password"), minutes, saveLock),
     h("h2", {}, "Sync"), syncBox,
     h("h2", {}, "Backup"), h("p", { class: "hint" }, "The backup file is encrypted; you need your master password to use it."),
     h("div", { class: "row" }, exp),

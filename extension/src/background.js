@@ -19,7 +19,7 @@ const SESSION_KEY = "lockboxSession";
 const FILES_KEY = "lockboxFiles";          // encrypted resume PDF (device-local, not synced yet)
 const PENDING_KEY = "lockboxPendingSave";  // session: logins waiting for a "save?" answer, per tab
 const DEFAULT_SETTINGS = {
-  autoLockMinutes: 15,
+  autoLockMinutes: 0,     // 0 = stay unlocked until Chrome closes (session storage is wiped on quit)
   quietChrome: true,      // turn off Chrome's own password/address prompts while Lockbox is unlocked
   ai: { enabled: false, model: DEFAULT_MODEL },
   inlineHelper: true,
@@ -84,6 +84,10 @@ async function chromePromptStatus() {
 }
 
 async function armAutoLock(minutes) {
+  if (!minutes) {
+    await chrome.alarms.clear("autolock");           // lock only when Chrome closes
+    return;
+  }
   await chrome.alarms.create("autolock", { delayInMinutes: Math.max(1, minutes) });
 }
 
@@ -271,7 +275,7 @@ const handlers = {
   async settings({ patch }) {
     const ctx = await unlocked();
     const minutes = Number(patch.autoLockMinutes);
-    if (Number.isFinite(minutes)) ctx.local.settings.autoLockMinutes = Math.min(240, Math.max(1, minutes));
+    if (Number.isFinite(minutes)) ctx.local.settings.autoLockMinutes = Math.min(240, Math.max(0, minutes));
     if (typeof patch.inlineHelper === "boolean") ctx.local.settings.inlineHelper = patch.inlineHelper;
     if (typeof patch.quietChrome === "boolean") ctx.local.settings.quietChrome = patch.quietChrome;
     if (patch.ai) ctx.local.settings.ai = { ...DEFAULT_SETTINGS.ai, ...ctx.local.settings.ai,
@@ -339,6 +343,24 @@ const handlers = {
   async resumeRemove() {
     await unlocked();
     await chrome.storage.local.remove(FILES_KEY);
+    return { ok: true };
+  },
+
+  /** Is the in-page helper running in the active tab? */
+  async pageHelper() {
+    const tab = await activeTab();
+    if (!tab?.url || !/^https?:/.test(tab.url)) return { status: "not-a-web-page" };
+    try {
+      const r = await chrome.tabs.sendMessage(tab.id, { type: "lockbox:ping" }, { frameId: 0 });
+      return r?.ok ? { status: "ok", fields: r.fields } : { status: "missing" };
+    } catch {
+      return { status: "missing" };   // no content script: tab opened before install/reload, or site access restricted
+    }
+  },
+
+  async refreshTab() {
+    const tab = await activeTab();
+    if (tab) await chrome.tabs.reload(tab.id);
     return { ok: true };
   },
 
@@ -555,6 +577,18 @@ chrome.commands.onCommand.addListener(async (command) => {
     // Locked or no match: the shortcut does nothing rather than surfacing anything to the page.
   }
 });
+
+// One-time: vaults created with the old 15-minute default switch to "lock when Chrome closes".
+(async () => {
+  const local = await loadLocal();
+  if (local && !local.settings.lockModeV2) {
+    if (local.settings.autoLockMinutes === 15) local.settings.autoLockMinutes = 0;
+    local.settings.lockModeV2 = true;
+    await saveLocal(local);
+    const session = await getSession();
+    if (session) await armAutoLock(local.settings.autoLockMinutes);
+  }
+})();
 
 // The browser restarted (session storage is empty, so Lockbox is locked): give Chrome its prompts back.
 chrome.runtime.onStartup?.addListener(() => syncChromePrompts());
