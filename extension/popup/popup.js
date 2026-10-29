@@ -361,9 +361,30 @@ function viewSettings() {
     toast(inline.checked ? "In-page helper on" : "In-page helper off");
   });
 
+  const quiet = h("input", { type: "checkbox", style: "width:auto" });
+  quiet.checked = s.quietChrome !== false;
+  const quietStatus = h("p", { class: "hint" });
+  const showQuiet = (status) => {
+    quietStatus.textContent = {
+      quiet: "Chrome's own prompts are off right now (they come back when Lockbox locks).",
+      chrome: "Chrome's own password and address prompts are on.",
+      blocked: "Chrome won't let Lockbox change this (set by your organisation or another extension).",
+      unsupported: "Not supported in this browser.",
+    }[status] || "";
+  };
+  showQuiet(ui.state.chromePrompts);
+  quiet.addEventListener("change", async () => {
+    const r = await send("settings", { patch: { quietChrome: quiet.checked } });
+    showQuiet(r.chromePrompts);
+  });
+
   return h("div", {},
     h("button", { class: "back", onclick: () => boot() }, "← Back"),
     h("h1", {}, "Settings"),
+    h("h2", {}, "Chrome's built-in prompts"),
+    h("label", { class: "row", style: "gap:8px;cursor:pointer" }, quiet,
+      h("span", {}, "Turn off Chrome's “Save password?” and address autofill while Lockbox is unlocked")),
+    quietStatus,
     h("h2", {}, "Quick passwords"),
     h("p", { class: "hint" }, "Passwords you reuse. On a site with no saved login, tap the password field to try them; after you sign in, Lockbox offers to save the login."),
     quickList, field("Label", qName), field("Password", qPw.wrap), qAdd,

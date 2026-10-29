@@ -1,14 +1,15 @@
 {
   "manifest_version": 3,
   "name": "Lockbox",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Personal end-to-end encrypted password manager and job-application autofill, with sync to samirpoudel.com.np.",
   "minimum_chrome_version": "116",
   "permissions": [
     "storage",
     "activeTab",
     "scripting",
-    "alarms"
+    "alarms",
+    "privacy"
   ],
   "host_permissions": [
     "<all_urls>"

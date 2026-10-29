@@ -33,6 +33,15 @@
       _fire: (name) => listeners.alarm.forEach((fn) => fn({ name })),
     },
     commands: { onCommand: { addListener: (fn) => listeners.command.push(fn) } },
+    // ChromeSetting stand-ins: value true by default; set() takes control, clear() hands it back.
+    privacy: { services: Object.fromEntries(["passwordSavingEnabled", "autofillAddressEnabled"].map((name) => {
+      const st = { value: true, levelOfControl: "controllable_by_this_extension" };
+      return [name, {
+        async get() { return { ...st }; },
+        async set({ value }) { st.value = value; st.levelOfControl = "controlled_by_this_extension"; },
+        async clear() { st.value = true; st.levelOfControl = "controllable_by_this_extension"; },
+      }];
+    })) },
     tabs: {
       async create({ url }) { window.open(url, "_blank"); },
       // Deliver to content-script listeners registered by site frames; first answer wins.

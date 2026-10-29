@@ -19,6 +19,7 @@ const FILES_KEY = "lockboxFiles";          // encrypted resume PDF (device-local
 const PENDING_KEY = "lockboxPendingSave";  // session: logins waiting for a "save?" answer, per tab
 const DEFAULT_SETTINGS = {
   autoLockMinutes: 15,
+  quietChrome: true,      // turn off Chrome's own password/address prompts while Lockbox is unlocked
   inlineHelper: true,
   neverSave: [],
   sync: { enabled: false, apiBase: sync.DEFAULT_API, version: 0, lastSyncAt: null, lastError: null },
@@ -44,6 +45,40 @@ async function getSession() {
 async function startSession(encKey, authToken, minutes) {
   await chrome.storage.session.set({ [SESSION_KEY]: { key: await exportKey(encKey), authToken } });
   await armAutoLock(minutes);
+  await syncChromePrompts();
+}
+
+// ---------------------------------------------------------------- Chrome's built-in prompts
+//
+// While Lockbox is unlocked, Chrome's own "Save password?" bubble and its password/address
+// autofill would compete with Lockbox, so we switch them off. Locking hands them back. Chrome
+// also restores them automatically if Lockbox is disabled or uninstalled.
+const CHROME_PROMPTS = () => [
+  chrome.privacy?.services?.passwordSavingEnabled,
+  chrome.privacy?.services?.autofillAddressEnabled,
+].filter(Boolean);
+
+async function syncChromePrompts() {
+  const [local, session] = await Promise.all([loadLocal(), getSession()]);
+  const quiet = !!session && local?.settings.quietChrome !== false;
+  for (const setting of CHROME_PROMPTS()) {
+    try {
+      if (quiet) await setting.set({ value: false });
+      else await setting.clear({});
+    } catch {
+      // Managed by policy or another extension: nothing we can do, Lockbox still works.
+    }
+  }
+  return quiet;
+}
+
+async function chromePromptStatus() {
+  const s = chrome.privacy?.services?.passwordSavingEnabled;
+  if (!s) return "unsupported";
+  const { value, levelOfControl } = await s.get({});
+  if (levelOfControl === "controlled_by_this_extension" && value === false) return "quiet";
+  if (levelOfControl === "not_controllable" || levelOfControl === "controlled_by_other_extensions") return "blocked";
+  return "chrome";
 }
 
 async function armAutoLock(minutes) {
@@ -53,6 +88,7 @@ async function armAutoLock(minutes) {
 async function lock() {
   await chrome.storage.session.remove(SESSION_KEY);
   await chrome.alarms.clear("autolock");
+  await syncChromePrompts();
 }
 
 /** Decrypted vault + key material, or throws "locked". */
@@ -136,6 +172,7 @@ const handlers = {
   async state() {
     const [local, session, tab] = await Promise.all([loadLocal(), getSession(), activeTab()]);
     return {
+      chromePrompts: await chromePromptStatus().catch(() => "unsupported"),
       status: !local ? "setup" : session ? "unlocked" : "locked",
       settings: local?.settings || DEFAULT_SETTINGS,
       tab: tab?.url ? { url: tab.url, host: safeHost(tab.url) } : null,
@@ -234,9 +271,11 @@ const handlers = {
     const minutes = Number(patch.autoLockMinutes);
     if (Number.isFinite(minutes)) ctx.local.settings.autoLockMinutes = Math.min(240, Math.max(1, minutes));
     if (typeof patch.inlineHelper === "boolean") ctx.local.settings.inlineHelper = patch.inlineHelper;
+    if (typeof patch.quietChrome === "boolean") ctx.local.settings.quietChrome = patch.quietChrome;
     if (Array.isArray(patch.neverSave)) ctx.local.settings.neverSave = patch.neverSave.map(String);
     await saveLocal(ctx.local);
-    return { settings: ctx.local.settings };
+    await syncChromePrompts();
+    return { settings: ctx.local.settings, chromePrompts: await chromePromptStatus() };
   },
 
   async enableSync({ apiBase, enrollToken }) {
@@ -499,3 +538,6 @@ chrome.commands.onCommand.addListener(async (command) => {
     // Locked or no match: the shortcut does nothing rather than surfacing anything to the page.
   }
 });
+
+// The browser restarted (session storage is empty, so Lockbox is locked): give Chrome its prompts back.
+chrome.runtime.onStartup?.addListener(() => syncChromePrompts());
