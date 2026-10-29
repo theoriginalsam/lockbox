@@ -9,6 +9,7 @@ import { fillLoginInPage, fillProfileInPage, readLoginInPage } from "./autofill.
 import {
   decryptJSON, deriveKeys, encryptJSON, exportKey, importKey, newKdfParams, openVault, passwordStrength, sealVault,
 } from "./crypto.js";
+import { DEFAULT_MODEL, draftAnswer } from "./ai.js";
 import { classify, emptyProfile, normalizeProfile, profileFacts, suggest } from "./jobfields.js";
 import * as sync from "./sync.js";
 import { deleteItem, emptyVault, liveItems, matchesSite, mergeVaults, upsertItem } from "./vault.js";
@@ -20,6 +21,7 @@ const PENDING_KEY = "lockboxPendingSave";  // session: logins waiting for a "sav
 const DEFAULT_SETTINGS = {
   autoLockMinutes: 15,
   quietChrome: true,      // turn off Chrome's own password/address prompts while Lockbox is unlocked
+  ai: { enabled: false, model: DEFAULT_MODEL },
   inlineHelper: true,
   neverSave: [],
   sync: { enabled: false, apiBase: sync.DEFAULT_API, version: 0, lastSyncAt: null, lastError: null },
@@ -272,6 +274,9 @@ const handlers = {
     if (Number.isFinite(minutes)) ctx.local.settings.autoLockMinutes = Math.min(240, Math.max(1, minutes));
     if (typeof patch.inlineHelper === "boolean") ctx.local.settings.inlineHelper = patch.inlineHelper;
     if (typeof patch.quietChrome === "boolean") ctx.local.settings.quietChrome = patch.quietChrome;
+    if (patch.ai) ctx.local.settings.ai = { ...DEFAULT_SETTINGS.ai, ...ctx.local.settings.ai,
+      ...(typeof patch.ai.enabled === "boolean" ? { enabled: patch.ai.enabled } : {}),
+      ...(patch.ai.model ? { model: String(patch.ai.model).trim().slice(0, 120) } : {}) };
     if (Array.isArray(patch.neverSave)) ctx.local.settings.neverSave = patch.neverSave.map(String);
     await saveLocal(ctx.local);
     await syncChromePrompts();
@@ -401,7 +406,19 @@ const contentHandlers = {
       hasProfile: items.some((i) => i.type === "job"),
       quickCount: items.filter((i) => i.type === "quick").length,
       siteLogins: items.filter((i) => matchesSite(i, sender.url)).length,
+      aiReady: !!local.settings.ai?.enabled && items.some((i) => i.type === "secret" && i.name === "openrouter" && i.password),
     };
+  },
+
+  async aiDraft({ field, page }) {
+    const ctx = await unlocked();
+    const ai = ctx.local.settings.ai || {};
+    if (!ai.enabled) throw new Error("AI drafting is off (Lockbox → Settings → AI drafting)");
+    const items = liveItems(ctx.vault);
+    const apiKey = items.find((i) => i.type === "secret" && i.name === "openrouter")?.password;
+    const profile = jobProfileOf(ctx.vault);
+    if (!profile) throw new Error("Add your work profile first");
+    return draftAnswer({ apiKey, model: ai.model, profile, field, page });
   },
 
   async suggest({ field }, sender) {

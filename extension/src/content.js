@@ -157,6 +157,12 @@
     .opt.best b::before { content: "★ "; }
     .sec { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: #8a909b; font-weight: 700; padding: 8px 9px 3px; }
     .note { padding: 12px; color: #4b5563; line-height: 1.45; }
+    .ai { display: block; width: calc(100% - 8px); margin: 4px; text-align: left; border: 1px dashed #b9c8f5; background: #f5f8ff;
+      color: #2f6fed; padding: 8px 10px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; }
+    .ai:hover { background: #eaf0ff; }
+    .draft { margin: 8px 10px; padding: 10px; border: 1px solid #dfe3ea; border-radius: 8px; max-height: 190px; overflow: auto;
+      white-space: pre-wrap; line-height: 1.45; font-size: 13px; }
+    .meta { padding: 0 12px 4px; font-size: 11px; color: #8a909b; }
     .warn { font-size: 11.5px; color: #8a5a00; background: #fff6df; padding: 6px 9px; margin: 4px; border-radius: 6px; }
     .foot { display: flex; gap: 6px; padding: 8px; border-top: 1px solid #eef0f4; }
     .btn { flex: 1; height: 30px; border-radius: 8px; border: 1px solid #dfe3ea; background: #f5f6f8; cursor: pointer; font-weight: 600; font-size: 12.5px; color: #111418; }
@@ -175,6 +181,8 @@
     :host([data-theme="dark"]) .badge { background: #1d2027; border-color: #3a404c; color: #8fb0ff; }
     :host([data-theme="dark"]) .badge:hover, :host([data-theme="dark"]) .badge:focus-visible { background: #262f45; border-color: #8fb0ff; }
     :host([data-theme="dark"]) .dot { color: #8fb0ff; }
+    :host([data-theme="dark"]) .ai { background: #1f2a44; border-color: #3a4f86; color: #9bb8ff; }
+    :host([data-theme="dark"]) .draft { border-color: #2f343e; }
     :host([data-theme="dark"]) .menu { background: #1d2027; color: #eef0f4; border-color: #2f343e; }
     :host([data-theme="dark"]) .head, :host([data-theme="dark"]) .foot { border-color: #2f343e; } .opt b { color: #9aa1ad; } .opt:hover, .opt.sel { background: #262f45; }
     :host([data-theme="dark"]) input.search { background: #15171c; color: #eef0f4; border-color: #2f343e; }
@@ -403,6 +411,11 @@
     };
     search.addEventListener("input", draw);
     search.addEventListener("mousedown", (e) => e.stopPropagation());   // let the search box take focus
+    const textual = field.tagName === "TEXTAREA" || ["text", ""].includes(field.type);
+    if (status?.aiReady && textual) {
+      wrap.append(el("button", { class: "ai", type: "button", title: "Sends your work profile, this question and the page text to your OpenRouter model",
+        onclick: trusted(() => aiDraftFlow(field, describe(field))) }, "✨ Draft with AI"));
+    }
     search.addEventListener("keydown", (e) => {
       if (!e.isTrusted) return;
       const opts = list.querySelectorAll(".opt");
@@ -423,6 +436,38 @@
     draw();
     wrap.append(search, list);
     menu.lastChild.replaceWith(wrap);
+  }
+
+  function pageContext(field) {
+    const main = document.querySelector("main, [role=main], .job, .posting, #content, article") || document.body;
+    return { title: document.title, host: location.hostname, text: textOf(main).slice(0, 6000),
+      existing: field.value?.trim() || "" };
+  }
+
+  async function aiDraftFlow(field, desc) {
+    if (!menu) return;
+    const body = menu.lastChild;
+    body.replaceWith(el("div", { class: "note" }, "✨ Drafting an answer from your profile…"));
+    let result;
+    try {
+      result = await ask("aiDraft", { field: desc, page: pageContext(field) });
+    } catch (err) {
+      return renderNote(`AI drafting failed: ${err.message}`);
+    }
+    if (!menu) return;
+    if (result.needsInput) {
+      menu.lastChild.replaceWith(el("div", {}, el("div", { class: "note" }, `The AI needs something your profile doesn't have: ${result.needsInput}`),
+        el("div", { class: "foot" }, el("button", { class: "btn", type: "button", onclick: trusted(() => closeMenu()) }, "OK"))));
+      return;
+    }
+    menu.lastChild.replaceWith(el("div", {},
+      el("div", { class: "draft" }, result.text),
+      result.model ? el("div", { class: "meta" }, `Drafted by ${result.model} · review before you submit`) : null,
+      el("div", { class: "foot" },
+        el("button", { class: "btn primary", type: "button", onclick: trusted(() => { setValue(field, result.text); closeMenu(); flash(field, "#1f9d55"); }) }, "Insert"),
+        el("button", { class: "btn", type: "button", onclick: trusted(() => aiDraftFlow(field, desc)) }, "Try again"),
+        el("button", { class: "btn", type: "button", onclick: trusted(() => closeMenu()) }, "Cancel"))));
+    placeNear(menu, field, { below: true });
   }
 
   function flash(field, color) {

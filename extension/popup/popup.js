@@ -378,9 +378,43 @@ function viewSettings() {
     showQuiet(r.chromePrompts);
   });
 
+  // ---- AI drafting (OpenRouter)
+  const ai = s.ai || { enabled: false, model: "openrouter/auto" };
+  const keyItem = ui.items.find((i) => i.type === "secret" && i.name === "openrouter");
+  const aiOn = h("input", { type: "checkbox", style: "width:auto" });
+  aiOn.checked = !!ai.enabled;
+  aiOn.addEventListener("change", async () => {
+    if (aiOn.checked && !keyItem) { aiOn.checked = false; toast("Save your OpenRouter key first", true); return; }
+    await send("settings", { patch: { ai: { enabled: aiOn.checked } } });
+    toast(aiOn.checked ? "AI drafting on" : "AI drafting off");
+  });
+  const keyIn = passwordInput({ placeholder: keyItem ? "Saved · paste a new key to replace" : "sk-or-…" });
+  const model = h("input", { type: "text", value: ai.model || "openrouter/auto", list: "or-models", spellcheck: false });
+  const models = h("datalist", { id: "or-models" });
+  fetch("https://openrouter.ai/api/v1/models").then((r) => r.json()).then((d) => {
+    const ids = (d.data || []).map((m) => m.id).sort();
+    models.replaceChildren(...["openrouter/auto", ...ids].map((id) => h("option", { value: id })));
+  }).catch(() => {});
+  const aiSave = h("button", { class: "btn sm primary" }, "Save AI settings");
+  aiSave.addEventListener("click", busy(aiSave, async () => {
+    const key = keyIn.input.value.trim();
+    if (key) {
+      if (!/^sk-or-/.test(key)) throw new Error("That doesn't look like an OpenRouter key (sk-or-…)");
+      await send("save", { item: { id: keyItem?.id, type: "secret", name: "openrouter", password: key } });
+    }
+    await send("settings", { patch: { ai: { model: model.value.trim() || "openrouter/auto", ...(key ? { enabled: true } : {}) } } });
+    toast(key ? "Key saved · AI drafting on" : "Saved");
+    await boot(viewSettings);
+  }));
+
   return h("div", {},
     h("button", { class: "back", onclick: () => boot() }, "← Back"),
     h("h1", {}, "Settings"),
+    h("h2", {}, "AI drafting (OpenRouter)"),
+    h("label", { class: "row", style: "gap:8px;cursor:pointer" }, aiOn, h("span", {}, "Show “✨ Draft with AI” on written-answer fields")),
+    h("p", { class: "hint" }, "When you click it, your work profile, the question and the job page text go to the model below via OpenRouter. Tip: make a separate OpenRouter key for Lockbox with a credit limit."),
+    field(keyItem ? "OpenRouter API key (saved, encrypted)" : "OpenRouter API key", keyIn.wrap),
+    field("Model (e.g. openrouter/auto, or pick from the list)", model), models, aiSave,
     h("h2", {}, "Chrome's built-in prompts"),
     h("label", { class: "row", style: "gap:8px;cursor:pointer" }, quiet,
       h("span", {}, "Turn off Chrome's “Save password?” and address autofill while Lockbox is unlocked")),
